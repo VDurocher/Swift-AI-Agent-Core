@@ -154,6 +154,71 @@ struct ChatView: View {
 
 ---
 
+## 💾 Local Persistence
+
+SwiftAIAgentCore includes a built-in conversation history layer powered by **SwiftData** (iOS 17+ / macOS 14+). All data is stored **locally on-device** — no server, no third party, privacy-first.
+
+### Setup
+
+```swift
+import SwiftUI
+import SwiftData
+import SwiftAIAgentCore
+
+// 1. Create the ModelContainer (once, at app startup)
+let schema = Schema([ConversationRecord.self, MessageRecord.self])
+let container = try ModelContainer(for: schema)
+
+// 2. Create the HistoryManager (actors share the same container)
+let historyManager = HistoryManager(modelContainer: container)
+
+// 3. Initialize the agent with history persistence
+let agent = try AIAgentImplementation(
+    configuration: AIConfiguration(model: .gpt4Turbo, apiKey: "your-api-key"),
+    historyManager: historyManager
+)
+
+// Every call to send() now auto-saves the conversation locally
+let response = try await agent.send(message: "Hello!")
+```
+
+### SwiftUI History View
+
+Display the conversation history with a built-in view that handles listing, navigation, and deletion:
+
+```swift
+@main
+struct MyApp: App {
+    let container = try! ModelContainer(for: ConversationRecord.self, MessageRecord.self)
+
+    var body: some Scene {
+        WindowGroup {
+            HistoryView()
+                .modelContainer(container)   // Required for @Query to work
+        }
+    }
+}
+```
+
+### Resume Previous Context
+
+Continue a conversation from a previous session:
+
+```swift
+// Load the last 20 messages from the most recent conversation
+let previousMessages = try await agent.loadPreviousContext(limit: 20)
+
+// Append new user input and send
+let messages = previousMessages + [.user("Continue from where we left off")]
+let response = try await agent.send(messages: messages)
+```
+
+### Availability
+
+The persistence layer is gated on `@available(iOS 17.0, macOS 14.0, *)` because it relies on SwiftData. All existing iOS 16+ functionality remains unchanged.
+
+---
+
 ## 🏗️ Architecture
 
 ```
@@ -171,6 +236,15 @@ SwiftAIAgentCore/
 │   ├── OpenAIClient         # OpenAI API implementation
 │   ├── AnthropicClient      # Anthropic API implementation
 │   └── AIAgentImplementation # Concrete AIAgent implementation
+│
+├── Persistence/             # Local Storage Layer (iOS 17+ / macOS 14+)
+│   ├── ConversationRecord   # SwiftData model for conversations
+│   ├── MessageRecord        # SwiftData model for messages
+│   └── HistoryManager       # @ModelActor — thread-safe history operations
+│
+├── UI/                      # SwiftUI Components (iOS 17+ / macOS 14+)
+│   ├── HistoryView          # Conversation list with delete support
+│   └── ConversationDetailView # Message-level conversation view
 │
 └── Utils/                   # Utilities
     └── TokenEstimator       # Token counting and validation
