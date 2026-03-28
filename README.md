@@ -485,4 +485,4 @@ MIT — see [LICENSE](LICENSE).
 
 ---
 
-**Vincent Durocher** — [@VDurocher](https://github.com/VDurocher)
+[@VDurocher](https://github.com/VDurocher)
