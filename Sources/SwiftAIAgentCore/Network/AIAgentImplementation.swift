@@ -81,6 +81,70 @@ public actor AIAgentImplementation: AIAgent {
         return response
     }
 
+    public func send(messages: [AIMessage], tools: [AITool]) async throws -> AIMessageWithTools {
+        // Validation du nombre de tokens avant l'envoi
+        try TokenEstimator.validate(
+            messages: messages,
+            model: configuration.model,
+            maxResponseTokens: configuration.maxResponseTokens
+        )
+
+        // Routage vers le client approprié avec support des outils
+        switch configuration.model.provider {
+        case .openai:
+            guard let client = openAIClient else {
+                throw AIError.invalidContext("OpenAI client not initialized")
+            }
+            return try await client.sendCompletionWithTools(messages: messages, tools: tools)
+
+        case .anthropic:
+            guard let client = anthropicClient else {
+                throw AIError.invalidContext("Anthropic client not initialized")
+            }
+            return try await client.sendCompletionWithTools(messages: messages, tools: tools)
+        }
+    }
+
+    public func send(messages: [AIMessage], toolResults: [AIToolResult]) async throws -> AIMessageWithTools {
+        // Convertit les résultats d'outils en messages AIMessage avec le rôle .tool
+        // Les clients OpenAI et Anthropic lisent la métadonnée "tool_call_id" pour construire la requête
+        let toolResultMessages: [AIMessage] = toolResults.map { result in
+            AIMessage(
+                role: .tool,
+                content: result.content,
+                metadata: ["tool_call_id": result.toolCallId]
+            )
+        }
+
+        // Append des résultats à l'historique existant et relance un appel sans outils
+        // Le modèle traite les résultats et produit sa réponse finale
+        let fullMessages = messages + toolResultMessages
+
+        try TokenEstimator.validate(
+            messages: fullMessages,
+            model: configuration.model,
+            maxResponseTokens: configuration.maxResponseTokens
+        )
+
+        switch configuration.model.provider {
+        case .openai:
+            guard let client = openAIClient else {
+                throw AIError.invalidContext("OpenAI client not initialized")
+            }
+            // Envoi sans outils supplémentaires — le modèle produit la réponse finale
+            let response = try await client.sendCompletion(messages: fullMessages)
+            return AIMessageWithTools(message: response)
+
+        case .anthropic:
+            guard let client = anthropicClient else {
+                throw AIError.invalidContext("Anthropic client not initialized")
+            }
+            // Envoi sans outils supplémentaires — le modèle produit la réponse finale
+            let response = try await client.sendCompletion(messages: fullMessages)
+            return AIMessageWithTools(message: response)
+        }
+    }
+
     public func stream(messages: [AIMessage]) -> AsyncThrowingStream<String, Error> {
         guard configuration.model.supportsStreaming else {
             return AsyncThrowingStream { continuation in
