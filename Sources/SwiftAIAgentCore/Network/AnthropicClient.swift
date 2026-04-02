@@ -271,7 +271,11 @@ actor AnthropicClient: Sendable {
     private func createRequest(messages: [AIMessage], tools: [AITool]?, stream: Bool) throws -> URLRequest {
         try configuration.validate()
 
-        let url = URL(string: "\(configuration.model.provider.baseURL)/messages")!
+        // Échec explicite si l'URL de base est invalide — ne jamais crasher en production
+        let rawURL = "\(configuration.model.provider.baseURL)/messages"
+        guard let url = URL(string: rawURL) else {
+            throw AIError.invalidContext("URL de l'endpoint Anthropic invalide : \(rawURL)")
+        }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
