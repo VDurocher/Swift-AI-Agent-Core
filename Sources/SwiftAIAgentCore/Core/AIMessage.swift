@@ -43,6 +43,12 @@ public struct AIMessage: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
+extension AIMessage: Equatable {
+    public static func == (lhs: AIMessage, rhs: AIMessage) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
 extension AIMessage: CustomStringConvertible {
     public var description: String {
         "[\(role.rawValue.uppercased())] \(content)"
