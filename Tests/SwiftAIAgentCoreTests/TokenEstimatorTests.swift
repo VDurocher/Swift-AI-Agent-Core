@@ -71,7 +71,7 @@ final class TokenEstimatorTests: XCTestCase {
 
         let truncated = TokenEstimator.truncate(
             messages: messages,
-            limit: 20,
+            limit: 9,
             keepSystemMessages: true
         )
 
