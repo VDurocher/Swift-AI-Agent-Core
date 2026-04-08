@@ -2,9 +2,9 @@ name: Swift CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ master ]
   pull_request:
-    branches: [ main ]
+    branches: [ master ]
 
 jobs:
   test:
@@ -12,8 +12,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [macos-14, macos-13]
-        xcode: ['16.0', '15.4']
+        include:
+          - os: macos-14
+            xcode: '16.0'
+          - os: macos-14
+            xcode: '15.4'
+          - os: macos-13
+            xcode: '15.4'
 
     steps:
     - uses: actions/checkout@v4
@@ -59,4 +64,4 @@ jobs:
       run: brew install swiftlint
 
     - name: Run SwiftLint
-      run: swiftlint lint --strict || true
+      run: swiftlint lint --strict
