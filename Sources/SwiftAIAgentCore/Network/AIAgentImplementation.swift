@@ -215,51 +215,77 @@ private extension AIAgentImplementation {
 // MARK: - Convenience Initializers
 
 public extension AIAgentImplementation {
-    /// Creates a GPT-4 agent
+
+    // MARK: OpenAI
+
+    /// Creates a GPT-4 agent (8k context)
     static func gpt4(apiKey: String) throws -> AIAgentImplementation {
-        let config = AIConfiguration(model: .gpt4, apiKey: apiKey)
-        return try AIAgentImplementation(configuration: config)
+        try AIAgentImplementation(configuration: AIConfiguration(model: .gpt4, apiKey: apiKey))
     }
 
-    /// Creates a GPT-4 Turbo agent
+    /// Creates a GPT-4 Turbo agent (128k context)
     static func gpt4Turbo(apiKey: String) throws -> AIAgentImplementation {
-        let config = AIConfiguration(model: .gpt4Turbo, apiKey: apiKey)
-        return try AIAgentImplementation(configuration: config)
+        try AIAgentImplementation(configuration: AIConfiguration(model: .gpt4Turbo, apiKey: apiKey))
     }
 
-    /// Creates a Claude 3 Opus agent
-    static func claude3Opus(apiKey: String) throws -> AIAgentImplementation {
-        let config = AIConfiguration(model: .claude3Opus, apiKey: apiKey)
-        return try AIAgentImplementation(configuration: config)
+    /// Creates a GPT-3.5 Turbo agent (16k context, fast and cost-efficient)
+    static func gpt35Turbo(apiKey: String) throws -> AIAgentImplementation {
+        try AIAgentImplementation(configuration: AIConfiguration(model: .gpt35Turbo, apiKey: apiKey))
     }
 
-    /// Creates a Claude 3 Sonnet agent
-    static func claude3Sonnet(apiKey: String) throws -> AIAgentImplementation {
-        let config = AIConfiguration(model: .claude3Sonnet, apiKey: apiKey)
-        return try AIAgentImplementation(configuration: config)
-    }
-
-    /// Creates a GPT-4o agent (multimodal, 128k context)
+    /// Creates a GPT-4o agent (128k context, multimodal)
     static func gpt4o(apiKey: String) throws -> AIAgentImplementation {
-        let config = AIConfiguration(model: .gpt4o, apiKey: apiKey)
-        return try AIAgentImplementation(configuration: config)
+        try AIAgentImplementation(configuration: AIConfiguration(model: .gpt4o, apiKey: apiKey))
     }
 
-    /// Creates a GPT-4o Mini agent (fast and cost-efficient)
+    /// Creates a GPT-4o Mini agent (128k context, fast and cost-efficient)
     static func gpt4oMini(apiKey: String) throws -> AIAgentImplementation {
-        let config = AIConfiguration(model: .gpt4oMini, apiKey: apiKey)
-        return try AIAgentImplementation(configuration: config)
+        try AIAgentImplementation(configuration: AIConfiguration(model: .gpt4oMini, apiKey: apiKey))
     }
 
-    /// Creates a Claude 3.5 Sonnet agent (high performance, 200k context)
+    // MARK: Anthropic — Claude 3
+
+    /// Creates a Claude 3 Haiku agent (200k context, fastest Claude 3)
+    static func claude3Haiku(apiKey: String) throws -> AIAgentImplementation {
+        try AIAgentImplementation(configuration: AIConfiguration(model: .claude3Haiku, apiKey: apiKey))
+    }
+
+    /// Creates a Claude 3 Sonnet agent (200k context)
+    static func claude3Sonnet(apiKey: String) throws -> AIAgentImplementation {
+        try AIAgentImplementation(configuration: AIConfiguration(model: .claude3Sonnet, apiKey: apiKey))
+    }
+
+    /// Creates a Claude 3 Opus agent (200k context, most capable Claude 3)
+    static func claude3Opus(apiKey: String) throws -> AIAgentImplementation {
+        try AIAgentImplementation(configuration: AIConfiguration(model: .claude3Opus, apiKey: apiKey))
+    }
+
+    // MARK: Anthropic — Claude 3.5
+
+    /// Creates a Claude 3.5 Haiku agent (200k context, fast and cost-efficient)
+    static func claude35Haiku(apiKey: String) throws -> AIAgentImplementation {
+        try AIAgentImplementation(configuration: AIConfiguration(model: .claude35Haiku, apiKey: apiKey))
+    }
+
+    /// Creates a Claude 3.5 Sonnet agent (200k context, high performance)
     static func claude35Sonnet(apiKey: String) throws -> AIAgentImplementation {
-        let config = AIConfiguration(model: .claude35Sonnet, apiKey: apiKey)
-        return try AIAgentImplementation(configuration: config)
+        try AIAgentImplementation(configuration: AIConfiguration(model: .claude35Sonnet, apiKey: apiKey))
     }
 
-    /// Creates a Claude Sonnet 4.6 agent — latest available Anthropic model
+    // MARK: Anthropic — Claude 4
+
+    /// Creates a Claude Haiku 4.5 agent (200k context, fastest Claude 4)
+    static func claudeHaiku45(apiKey: String) throws -> AIAgentImplementation {
+        try AIAgentImplementation(configuration: AIConfiguration(model: .claudeHaiku45, apiKey: apiKey))
+    }
+
+    /// Creates a Claude Sonnet 4.6 agent (200k context)
     static func claudeSonnet46(apiKey: String) throws -> AIAgentImplementation {
-        let config = AIConfiguration(model: .claudeSonnet46, apiKey: apiKey)
-        return try AIAgentImplementation(configuration: config)
+        try AIAgentImplementation(configuration: AIConfiguration(model: .claudeSonnet46, apiKey: apiKey))
+    }
+
+    /// Creates a Claude Opus 4.6 agent (200k context, most capable Claude 4)
+    static func claudeOpus46(apiKey: String) throws -> AIAgentImplementation {
+        try AIAgentImplementation(configuration: AIConfiguration(model: .claudeOpus46, apiKey: apiKey))
     }
 }
