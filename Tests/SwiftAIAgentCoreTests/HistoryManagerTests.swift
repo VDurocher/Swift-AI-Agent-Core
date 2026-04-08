@@ -7,7 +7,7 @@ final class HistoryManagerTests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// Crée un HistoryManager avec un ModelContainer en mémoire uniquement (isolé par test)
+    /// Creates a HistoryManager with an in-memory-only ModelContainer (isolated per test)
     private func makeHistoryManager() async throws -> (HistoryManager, ModelContainer) {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try ModelContainer(
@@ -20,15 +20,15 @@ final class HistoryManagerTests: XCTestCase {
 
     // MARK: - Tests
 
-    /// Vérifie que saveConversation persiste bien les messages dans le container
+    /// Verifies that saveConversation correctly persists messages in the container
     func testSaveConversation() async throws {
         let (manager, _) = try await makeHistoryManager()
 
         let messages: [AIMessage] = [
-            .user("Bonjour"),
-            .assistant("Bonjour, comment puis-je vous aider ?")
+            .user("Hello"),
+            .assistant("Hello, how can I help you?")
         ]
-        let response = AIMessage.assistant("Je suis là pour vous aider.")
+        let response = AIMessage.assistant("I am here to help.")
 
         try await manager.saveConversation(
             messages: messages,
@@ -38,46 +38,46 @@ final class HistoryManagerTests: XCTestCase {
 
         let conversations = try await manager.loadConversations()
         XCTAssertEqual(conversations.count, 1)
-        // 2 messages envoyés + 1 réponse = 3 messages persistés
+        // 2 sent messages + 1 response = 3 persisted messages
         XCTAssertEqual(conversations[0].messages.count, 3)
         XCTAssertEqual(conversations[0].model, "gpt-4o")
     }
 
-    /// Vérifie que loadConversations retourne les conversations par ordre décroissant
+    /// Verifies that loadConversations returns conversations in descending order
     func testLoadConversationsOrder() async throws {
         let (manager, _) = try await makeHistoryManager()
 
-        // Première conversation
+        // First conversation
         try await manager.saveConversation(
-            messages: [.user("Premier message")],
-            response: .assistant("Première réponse"),
+            messages: [.user("First message")],
+            response: .assistant("First response"),
             modelName: "gpt-4o"
         )
 
-        // Petite pause pour garantir des timestamps distincts
+        // Small pause to ensure distinct timestamps
         try await Task.sleep(nanoseconds: 10_000_000)
 
-        // Deuxième conversation (plus récente)
+        // Second conversation (more recent)
         try await manager.saveConversation(
-            messages: [.user("Deuxième message")],
-            response: .assistant("Deuxième réponse"),
+            messages: [.user("Second message")],
+            response: .assistant("Second response"),
             modelName: "claude-sonnet-4-6"
         )
 
         let conversations = try await manager.loadConversations()
         XCTAssertEqual(conversations.count, 2)
-        // La plus récente doit être en premier (ordre décroissant)
+        // Most recent must be first (descending order)
         XCTAssertEqual(conversations[0].model, "claude-sonnet-4-6")
         XCTAssertEqual(conversations[1].model, "gpt-4o")
     }
 
-    /// Vérifie que loadPreviousContext respecte la limite de messages
+    /// Verifies that loadPreviousContext respects the message limit
     func testLoadPreviousContextLimit() async throws {
         let (manager, _) = try await makeHistoryManager()
 
-        // Crée 5 messages utilisateur + 1 réponse = 6 messages au total
+        // Create 5 user messages + 1 response = 6 messages total
         let messages: [AIMessage] = (1...5).map { .user("Message \($0)") }
-        let response = AIMessage.assistant("Réponse finale")
+        let response = AIMessage.assistant("Final response")
 
         try await manager.saveConversation(
             messages: messages,
@@ -85,18 +85,18 @@ final class HistoryManagerTests: XCTestCase {
             modelName: "gpt-4o"
         )
 
-        // Limite à 3 messages
+        // Limit to 3 messages
         let context = try await manager.loadPreviousContext(limit: 3)
         XCTAssertEqual(context.count, 3)
     }
 
-    /// Vérifie que deleteConversation supprime correctement la conversation ciblée
+    /// Verifies that deleteConversation correctly removes the targeted conversation
     func testDeleteConversation() async throws {
         let (manager, _) = try await makeHistoryManager()
 
         try await manager.saveConversation(
-            messages: [.user("À supprimer")],
-            response: .assistant("Réponse"),
+            messages: [.user("To delete")],
+            response: .assistant("Response"),
             modelName: "gpt-4o"
         )
 
@@ -110,15 +110,15 @@ final class HistoryManagerTests: XCTestCase {
         XCTAssertEqual(remaining.count, 0)
     }
 
-    /// Vérifie que le prompt système est bien persisté avec la conversation
+    /// Verifies that the system prompt is correctly persisted with the conversation
     func testSaveConversationWithSystemPrompt() async throws {
         let (manager, _) = try await makeHistoryManager()
 
         let messages: [AIMessage] = [
-            .system("Tu es un assistant expert en Swift."),
-            .user("Comment fonctionne async/await ?")
+            .system("You are a Swift expert assistant."),
+            .user("How does async/await work?")
         ]
-        let response = AIMessage.assistant("async/await est un mécanisme de concurrence...")
+        let response = AIMessage.assistant("async/await is a concurrency mechanism...")
 
         try await manager.saveConversation(
             messages: messages,
@@ -128,18 +128,18 @@ final class HistoryManagerTests: XCTestCase {
 
         let conversations = try await manager.loadConversations()
         XCTAssertEqual(conversations.count, 1)
-        XCTAssertEqual(conversations[0].systemPrompt, "Tu es un assistant expert en Swift.")
+        XCTAssertEqual(conversations[0].systemPrompt, "You are a Swift expert assistant.")
     }
 
-    /// Vérifie que conversationToMessages convertit correctement les records en AIMessage
+    /// Verifies that conversationToMessages correctly converts records to AIMessage
     func testConversationToMessages() async throws {
         let (manager, _) = try await makeHistoryManager()
 
         let originalMessages: [AIMessage] = [
             .user("Question"),
-            .assistant("Réponse intermédiaire")
+            .assistant("Intermediate response")
         ]
-        let response = AIMessage.assistant("Réponse finale")
+        let response = AIMessage.assistant("Final response")
 
         try await manager.saveConversation(
             messages: originalMessages,
@@ -152,16 +152,16 @@ final class HistoryManagerTests: XCTestCase {
 
         let converted = await manager.conversationToMessages(conversations[0])
 
-        // Vérifie le nombre total de messages convertis
+        // Verify the total number of converted messages
         XCTAssertEqual(converted.count, 3)
 
-        // Vérifie que les rôles sont correctement restaurés
+        // Verify that roles are correctly restored
         XCTAssertEqual(converted[0].role, .user)
         XCTAssertEqual(converted[1].role, .assistant)
         XCTAssertEqual(converted[2].role, .assistant)
 
-        // Vérifie le contenu des messages
+        // Verify message content
         XCTAssertEqual(converted[0].content, "Question")
-        XCTAssertEqual(converted[2].content, "Réponse finale")
+        XCTAssertEqual(converted[2].content, "Final response")
     }
 }

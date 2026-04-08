@@ -32,22 +32,22 @@ public protocol AIAgent: Sendable {
     /// - Returns: Estimated token count
     func estimateTokens(for messages: [AIMessage]) -> Int
 
-    /// Envoie des messages avec des outils disponibles — le modèle peut décider d'appeler un outil
+    /// Send messages with available tools — the model may decide to call a tool
     /// - Parameters:
-    ///   - messages: Historique de la conversation
-    ///   - tools: Outils que le modèle peut invoquer
-    /// - Returns: Réponse pouvant contenir du texte et/ou des appels d'outils
+    ///   - messages: Conversation history
+    ///   - tools: Tools the model can invoke
+    /// - Returns: Response potentially containing text and/or tool calls
     func send(messages: [AIMessage], tools: [AITool]) async throws -> AIMessageWithTools
 
-    /// Envoie les résultats d'outils dans une conversation en cours
+    /// Send tool results back into an ongoing conversation
     /// - Parameters:
-    ///   - messages: Historique complet incluant le message assistant avec tool calls
-    ///   - toolResults: Résultats des outils exécutés par l'application
-    /// - Returns: Réponse finale du modèle après traitement des résultats
+    ///   - messages: Full history including the assistant message with tool calls
+    ///   - toolResults: Results of tools executed by the application
+    /// - Returns: Final model response after processing the results
     func send(messages: [AIMessage], toolResults: [AIToolResult]) async throws -> AIMessageWithTools
 }
 
-/// Implémentations par défaut
+/// Default implementations
 public extension AIAgent {
     func send(message: String) async throws -> String {
         let response = try await send(messages: [.user(message)])
@@ -62,13 +62,13 @@ public extension AIAgent {
         messages.reduce(0) { $0 + $1.estimatedTokens }
     }
 
-    /// Implémentation par défaut : ignore les outils et effectue un appel classique
+    /// Default implementation: ignores tools and performs a standard call
     func send(messages: [AIMessage], tools: [AITool]) async throws -> AIMessageWithTools {
         let response = try await send(messages: messages)
         return AIMessageWithTools(message: response)
     }
 
-    /// Implémentation par défaut : concatène les résultats comme messages user et poursuit
+    /// Default implementation: concatenates results as user messages and continues
     func send(messages: [AIMessage], toolResults: [AIToolResult]) async throws -> AIMessageWithTools {
         let resultMessages = toolResults.map { result in
             AIMessage.user("[Tool Result \(result.toolCallId)]: \(result.content)")

@@ -1,9 +1,9 @@
 import Foundation
 
-// Types pour le function calling / tool use multimodal
-// Compatible OpenAI tools format et Anthropic tools format
+// Types for function calling / multimodal tool use
+// Compatible with OpenAI tools format and Anthropic tools format
 
-/// Décrit un outil (fonction) que l'agent peut appeler
+/// Describes a tool (function) that the agent can call
 public struct AITool: Sendable, Encodable, Hashable {
     public let name: String
     public let description: String
@@ -15,9 +15,9 @@ public struct AITool: Sendable, Encodable, Hashable {
         self.parameters = parameters
     }
 
-    /// Paramètres de l'outil au format JSON Schema
+    /// Tool parameters in JSON Schema format
     public struct AIToolParameters: Sendable, Encodable, Hashable {
-        /// Toujours "object" selon la spécification JSON Schema
+        /// Always "object" per JSON Schema specification
         public let type: String
         public let properties: [String: AIToolProperty]
         public let required: [String]
@@ -29,12 +29,12 @@ public struct AITool: Sendable, Encodable, Hashable {
         }
     }
 
-    /// Propriété individuelle dans le JSON Schema
+    /// Individual property in the JSON Schema
     public struct AIToolProperty: Sendable, Encodable, Hashable {
-        /// Type JSON Schema : "string", "integer", "boolean", "number", "array"
+        /// JSON Schema type: "string", "integer", "boolean", "number", "array"
         public let type: String
         public let description: String
-        /// Valeurs possibles si la propriété est de type enum
+        /// Allowed values if the property is an enum type
         public let enumValues: [String]?
 
         public init(type: String, description: String, enumValues: [String]? = nil) {

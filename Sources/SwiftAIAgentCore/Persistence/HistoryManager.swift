@@ -1,15 +1,15 @@
 import Foundation
 import SwiftData
 
-/// Gestionnaire de l'historique des conversations, confiné à son propre executor SwiftData.
-/// Utilise @ModelActor pour garantir la thread-safety en Swift 6 strict concurrency.
+/// Conversation history manager, confined to its own SwiftData executor.
+/// Uses @ModelActor to guarantee thread safety under Swift 6 strict concurrency.
 @available(iOS 17.0, macOS 14.0, watchOS 10.0, tvOS 17.0, *)
 @ModelActor
 public actor HistoryManager {
 
-    // MARK: - Écriture
+    // MARK: - Write
 
-    /// Sauvegarde une conversation complète (messages envoyés + réponse de l'agent)
+    /// Saves a complete conversation (sent messages + agent response)
     public func saveConversation(
         messages: [AIMessage],
         response: AIMessage,
@@ -21,10 +21,10 @@ public actor HistoryManager {
             systemPrompt: systemPrompt
         )
 
-        // Insérer le record principal avant de configurer les relations
+        // Insert the main record before setting up relationships
         modelContext.insert(record)
 
-        // Persister tous les messages + la réponse dans l'ordre chronologique
+        // Persist all messages + the response in chronological order
         let allMessages = messages + [response]
         for message in allMessages {
             let messageRecord = MessageRecord(
@@ -39,7 +39,7 @@ public actor HistoryManager {
         try modelContext.save()
     }
 
-    /// Supprime une conversation par son identifiant
+    /// Deletes a conversation by its identifier
     public func deleteConversation(id: UUID) throws {
         let targetID = id
         let descriptor = FetchDescriptor<ConversationRecord>(
@@ -52,9 +52,9 @@ public actor HistoryManager {
         try modelContext.save()
     }
 
-    // MARK: - Lecture
+    // MARK: - Read
 
-    /// Charge toutes les conversations, triées par date décroissante
+    /// Loads all conversations sorted by descending date
     public func loadConversations() throws -> [ConversationRecord] {
         let descriptor = FetchDescriptor<ConversationRecord>(
             sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
@@ -62,8 +62,8 @@ public actor HistoryManager {
         return try modelContext.fetch(descriptor)
     }
 
-    /// Charge les N derniers messages de la conversation la plus récente,
-    /// convertis en AIMessage pour alimenter le contexte de l'agent
+    /// Loads the last N messages from the most recent conversation,
+    /// converted to AIMessage to seed the agent's context
     public func loadPreviousContext(limit: Int = 20) throws -> [AIMessage] {
         var descriptor = FetchDescriptor<ConversationRecord>(
             sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
@@ -87,7 +87,7 @@ public actor HistoryManager {
             }
     }
 
-    /// Convertit un ConversationRecord en tableau de AIMessage
+    /// Converts a ConversationRecord into an array of AIMessage
     public func conversationToMessages(_ record: ConversationRecord) -> [AIMessage] {
         record.messages
             .sorted { $0.timestamp < $1.timestamp }

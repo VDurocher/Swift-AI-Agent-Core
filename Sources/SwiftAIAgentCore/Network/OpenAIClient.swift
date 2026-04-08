@@ -18,7 +18,7 @@ actor OpenAIClient: Sendable {
         let temperature: Double
         let maxTokens: Int
         let stream: Bool
-        /// Outils disponibles pour le function calling (optionnel)
+        /// Available tools for function calling (optional)
         let tools: [ToolDefinition]?
 
         enum CodingKeys: String, CodingKey {
@@ -30,7 +30,7 @@ actor OpenAIClient: Sendable {
         struct Message: Encodable {
             let role: String
             let content: String
-            /// Identifiant de l'appel d'outil auquel ce message répond (role "tool" uniquement)
+            /// Identifier of the tool call this message responds to (role "tool" only)
             let toolCallId: String?
 
             enum CodingKeys: String, CodingKey {
@@ -45,9 +45,9 @@ actor OpenAIClient: Sendable {
             }
         }
 
-        /// Définition d'un outil au format OpenAI function calling
+        /// Tool definition in OpenAI function calling format
         struct ToolDefinition: Encodable {
-            /// Toujours "function" pour le format OpenAI
+            /// Always "function" for the OpenAI format
             let type: String
             let function: FunctionDefinition
 
@@ -75,9 +75,9 @@ actor OpenAIClient: Sendable {
 
         struct Message: Decodable {
             let role: String
-            /// Contenu textuel — peut être nil si le modèle n'appelle que des outils
+            /// Text content — may be nil if the model only calls tools
             let content: String?
-            /// Appels d'outils demandés par le modèle (nil si réponse textuelle)
+            /// Tool calls requested by the model (nil for text responses)
             let toolCalls: [ToolCallResponse]?
 
             enum CodingKeys: String, CodingKey {
@@ -86,7 +86,7 @@ actor OpenAIClient: Sendable {
             }
         }
 
-        /// Appel d'outil tel que retourné par l'API OpenAI
+        /// Tool call as returned by the OpenAI API
         struct ToolCallResponse: Decodable {
             let id: String
             let function: FunctionCall
@@ -134,7 +134,7 @@ actor OpenAIClient: Sendable {
         )
     }
 
-    /// Envoie des messages avec des outils disponibles — le modèle peut retourner des appels d'outils
+    /// Sends messages with available tools — the model may return tool calls
     func sendCompletionWithTools(messages: [AIMessage], tools: [AITool]) async throws -> AIMessageWithTools {
         let request = try createRequest(messages: messages, tools: tools, stream: false)
         let (data, _) = try await networkClient.execute(request: request)
@@ -145,7 +145,7 @@ actor OpenAIClient: Sendable {
             throw AIError.invalidResponse(statusCode: 200, message: "No choices in response")
         }
 
-        // Convertit les tool calls de la réponse OpenAI en AIToolCall
+        // Convert OpenAI tool call responses to AIToolCall
         let toolCalls: [AIToolCall] = choice.message.toolCalls?.map { callResponse in
             AIToolCall(
                 id: callResponse.id,
@@ -204,10 +204,10 @@ actor OpenAIClient: Sendable {
     private func createRequest(messages: [AIMessage], tools: [AITool]?, stream: Bool) throws -> URLRequest {
         try configuration.validate()
 
-        // Échec explicite si l'URL de base est invalide — ne jamais crasher en production
+        // Fail explicitly if the base URL is invalid — never crash in production
         let rawURL = "\(configuration.model.provider.baseURL)/chat/completions"
         guard let url = URL(string: rawURL) else {
-            throw AIError.invalidContext("URL de l'endpoint OpenAI invalide : \(rawURL)")
+            throw AIError.invalidContext("Invalid OpenAI endpoint URL: \(rawURL)")
         }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -215,7 +215,7 @@ actor OpenAIClient: Sendable {
         request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = configuration.timeout
 
-        // Convertit les messages en format OpenAI, en gérant le role "tool" pour les résultats
+        // Convert messages to OpenAI format, handling the "tool" role for results
         let openAIMessages = messages.map { message -> ChatCompletionRequest.Message in
             let toolCallId = message.role == .tool ? message.metadata?["tool_call_id"] : nil
             return ChatCompletionRequest.Message(
@@ -225,7 +225,7 @@ actor OpenAIClient: Sendable {
             )
         }
 
-        // Convertit les AITool en ToolDefinition OpenAI si présents
+        // Convert AITool values to OpenAI ToolDefinition if provided
         let toolDefinitions = tools.map { toolArray in
             toolArray.map { tool in
                 ChatCompletionRequest.ToolDefinition(

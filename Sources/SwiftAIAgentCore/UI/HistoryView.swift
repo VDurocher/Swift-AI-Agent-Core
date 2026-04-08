@@ -1,9 +1,9 @@
 import SwiftUI
 import SwiftData
 
-/// Vue principale de l'historique des conversations.
-/// Nécessite un ModelContainer dans l'environnement SwiftUI :
-/// `.modelContainer(myContainer)` sur un ancêtre de la vue.
+/// Main conversation history view.
+/// Requires a ModelContainer in the SwiftUI environment:
+/// `.modelContainer(myContainer)` on an ancestor view.
 @available(iOS 17.0, macOS 14.0, watchOS 10.0, tvOS 17.0, *)
 public struct HistoryView: View {
     @Query(sort: \ConversationRecord.createdAt, order: .reverse)
@@ -11,7 +11,7 @@ public struct HistoryView: View {
 
     @Environment(\.modelContext) private var modelContext
 
-    /// Conversation sélectionnée pour la confirmation de suppression
+    /// Conversation selected for deletion confirmation
     @State private var conversationPendingDelete: ConversationRecord?
 
     public init() {}
@@ -25,29 +25,29 @@ public struct HistoryView: View {
                     conversationList
                 }
             }
-            .navigationTitle("Historique")
+            .navigationTitle("History")
         }
         .confirmationDialog(
-            "Supprimer cette conversation ?",
+            "Delete this conversation?",
             isPresented: .init(
                 get: { conversationPendingDelete != nil },
                 set: { if !$0 { conversationPendingDelete = nil } }
             ),
             titleVisibility: .visible
         ) {
-            Button("Supprimer", role: .destructive) {
+            Button("Delete", role: .destructive) {
                 if let target = conversationPendingDelete {
                     deleteConversation(target)
                     conversationPendingDelete = nil
                 }
             }
-            Button("Annuler", role: .cancel) {
+            Button("Cancel", role: .cancel) {
                 conversationPendingDelete = nil
             }
         }
     }
 
-    // MARK: - Sous-vues
+    // MARK: - Subviews
 
     private var conversationList: some View {
         List {
@@ -65,9 +65,9 @@ public struct HistoryView: View {
 
     private var emptyStateView: some View {
         ContentUnavailableView(
-            "Aucune conversation",
+            "No Conversations",
             systemImage: "bubble.left.and.bubble.right",
-            description: Text("Vos conversations apparaîtront ici après votre premier échange.")
+            description: Text("Your conversations will appear here after your first exchange.")
         )
     }
 
@@ -84,7 +84,7 @@ public struct HistoryView: View {
     }
 }
 
-// MARK: - Cellule de conversation
+// MARK: - Conversation Row
 
 @available(iOS 17.0, macOS 14.0, watchOS 10.0, tvOS 17.0, *)
 private struct ConversationRowView: View {
@@ -94,7 +94,7 @@ private struct ConversationRowView: View {
         guard let lastMessage = conversation.messages
             .sorted(by: { $0.timestamp < $1.timestamp })
             .last
-        else { return "Aucun message" }
+        else { return "No messages" }
         let content = lastMessage.content
         return content.count > 60 ? String(content.prefix(60)) + "…" : content
     }

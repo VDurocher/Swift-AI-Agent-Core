@@ -1,7 +1,7 @@
 import SwiftUI
 import SwiftData
 
-/// Vue détaillée d'une conversation, affichant tous les messages avec leur rôle.
+/// Detail view for a conversation, displaying all messages with their role.
 @available(iOS 17.0, macOS 14.0, watchOS 10.0, tvOS 17.0, *)
 public struct ConversationDetailView: View {
     let conversation: ConversationRecord
@@ -12,23 +12,23 @@ public struct ConversationDetailView: View {
 
     public var body: some View {
         List {
-            // Métadonnées de la conversation
+            // Conversation metadata
             Section {
-                LabeledContent("Modèle", value: conversation.model)
+                LabeledContent("Model", value: conversation.model)
                 LabeledContent("Date", value: conversation.createdAt.formatted(date: .long, time: .shortened))
                 LabeledContent("Messages", value: "\(conversation.messages.count)")
                 if let systemPrompt = conversation.systemPrompt {
-                    LabeledContent("Prompt système") {
+                    LabeledContent("System Prompt") {
                         Text(systemPrompt)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
             } header: {
-                Text("Informations")
+                Text("Information")
             }
 
-            // Liste des messages dans l'ordre chronologique
+            // Messages in chronological order
             Section {
                 ForEach(sortedMessages) { message in
                     MessageRowView(message: message)
@@ -42,7 +42,7 @@ public struct ConversationDetailView: View {
     }
 }
 
-// MARK: - Cellule de message
+// MARK: - Message Row
 
 @available(iOS 17.0, macOS 14.0, watchOS 10.0, tvOS 17.0, *)
 private struct MessageRowView: View {
@@ -50,9 +50,9 @@ private struct MessageRowView: View {
 
     private var roleLabel: String {
         switch message.role {
-        case "user": return "Utilisateur"
+        case "user": return "User"
         case "assistant": return "Assistant"
-        case "system": return "Système"
+        case "system": return "System"
         default: return message.role.capitalized
         }
     }

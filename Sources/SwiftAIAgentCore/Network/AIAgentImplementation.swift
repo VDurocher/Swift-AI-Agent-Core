@@ -1,26 +1,26 @@
 import Foundation
 
-/// Implémentation concrète du protocole AIAgent.
-/// Supporte plusieurs providers LLM et, sur iOS 17+, la persistance locale via SwiftData.
+/// Concrete implementation of the AIAgent protocol.
+/// Supports multiple LLM providers and, on iOS 17+, local persistence via SwiftData.
 public actor AIAgentImplementation: AIAgent {
     public let configuration: AIConfiguration
 
     private let openAIClient: OpenAIClient?
     private let anthropicClient: AnthropicClient?
 
-    /// Stockage type-erased du HistoryManager pour éviter la contrainte @available
-    /// sur une propriété stockée. Accédé via la propriété calculée `historyManager`.
+    /// Type-erased storage for HistoryManager to avoid placing a @available constraint
+    /// on a stored property. Accessed via the computed property `historyManager`.
     private let _historyManager: Any?
 
-    /// Gestionnaire d'historique SwiftData (iOS 17+ / macOS 14+ uniquement)
+    /// SwiftData history manager (iOS 17+ / macOS 14+ only)
     @available(iOS 17.0, macOS 14.0, watchOS 10.0, tvOS 17.0, *)
     private var historyManager: HistoryManager? {
         _historyManager as? HistoryManager
     }
 
-    // MARK: - Initialiseurs désignés
+    // MARK: - Designated Initializers
 
-    /// Initialise l'agent sans persistance locale
+    /// Initializes the agent without local persistence
     public init(configuration: AIConfiguration) throws {
         try configuration.validate()
         self.configuration = configuration
@@ -30,7 +30,7 @@ public actor AIAgentImplementation: AIAgent {
         self.anthropicClient = anthropic
     }
 
-    /// Initialise l'agent avec persistance locale via SwiftData (iOS 17+ / macOS 14+)
+    /// Initializes the agent with local persistence via SwiftData (iOS 17+ / macOS 14+)
     @available(iOS 17.0, macOS 14.0, watchOS 10.0, tvOS 17.0, *)
     public init(configuration: AIConfiguration, historyManager: HistoryManager) throws {
         try configuration.validate()
@@ -44,14 +44,14 @@ public actor AIAgentImplementation: AIAgent {
     // MARK: - AIAgent Protocol
 
     public func send(messages: [AIMessage]) async throws -> AIMessage {
-        // Validation du nombre de tokens avant l'envoi
+        // Validate token count before sending
         try TokenEstimator.validate(
             messages: messages,
             model: configuration.model,
             maxResponseTokens: configuration.maxResponseTokens
         )
 
-        // Routage vers le client approprié
+        // Route to the appropriate client
         let response: AIMessage
         switch configuration.model.provider {
         case .openai:
@@ -67,7 +67,7 @@ public actor AIAgentImplementation: AIAgent {
             response = try await client.sendCompletion(messages: messages)
         }
 
-        // Sauvegarde dans l'historique si un gestionnaire est configuré (iOS 17+ seulement)
+        // Save to history if a manager is configured (iOS 17+ only)
         if #available(iOS 17.0, macOS 14.0, watchOS 10.0, tvOS 17.0, *) {
             if let manager = historyManager {
                 try? await manager.saveConversation(
@@ -82,14 +82,14 @@ public actor AIAgentImplementation: AIAgent {
     }
 
     public func send(messages: [AIMessage], tools: [AITool]) async throws -> AIMessageWithTools {
-        // Validation du nombre de tokens avant l'envoi
+        // Validate token count before sending
         try TokenEstimator.validate(
             messages: messages,
             model: configuration.model,
             maxResponseTokens: configuration.maxResponseTokens
         )
 
-        // Routage vers le client approprié avec support des outils
+        // Route to the appropriate client with tool support
         switch configuration.model.provider {
         case .openai:
             guard let client = openAIClient else {
@@ -106,8 +106,8 @@ public actor AIAgentImplementation: AIAgent {
     }
 
     public func send(messages: [AIMessage], toolResults: [AIToolResult]) async throws -> AIMessageWithTools {
-        // Convertit les résultats d'outils en messages AIMessage avec le rôle .tool
-        // Les clients OpenAI et Anthropic lisent la métadonnée "tool_call_id" pour construire la requête
+        // Convert tool results into AIMessage values with the .tool role.
+        // OpenAI and Anthropic clients read the "tool_call_id" metadata key to build the request.
         let toolResultMessages: [AIMessage] = toolResults.map { result in
             AIMessage(
                 role: .tool,
@@ -116,8 +116,8 @@ public actor AIAgentImplementation: AIAgent {
             )
         }
 
-        // Append des résultats à l'historique existant et relance un appel sans outils
-        // Le modèle traite les résultats et produit sa réponse finale
+        // Append results to the existing history and issue a new call without tools.
+        // The model processes the results and produces its final response.
         let fullMessages = messages + toolResultMessages
 
         try TokenEstimator.validate(
@@ -131,7 +131,7 @@ public actor AIAgentImplementation: AIAgent {
             guard let client = openAIClient else {
                 throw AIError.invalidContext("OpenAI client not initialized")
             }
-            // Envoi sans outils supplémentaires — le modèle produit la réponse finale
+            // Send without additional tools — the model produces the final response
             let response = try await client.sendCompletion(messages: fullMessages)
             return AIMessageWithTools(message: response)
 
@@ -139,7 +139,7 @@ public actor AIAgentImplementation: AIAgent {
             guard let client = anthropicClient else {
                 throw AIError.invalidContext("Anthropic client not initialized")
             }
-            // Envoi sans outils supplémentaires — le modèle produit la réponse finale
+            // Send without additional tools — the model produces the final response
             let response = try await client.sendCompletion(messages: fullMessages)
             return AIMessageWithTools(message: response)
         }
@@ -152,7 +152,7 @@ public actor AIAgentImplementation: AIAgent {
             }
         }
 
-        // Validation du nombre de tokens
+        // Validate token count
         do {
             try TokenEstimator.validate(
                 messages: messages,
@@ -165,7 +165,7 @@ public actor AIAgentImplementation: AIAgent {
             }
         }
 
-        // Routage vers le client approprié
+        // Route to the appropriate client
         switch configuration.model.provider {
         case .openai:
             guard let client = openAIClient else {
@@ -185,10 +185,10 @@ public actor AIAgentImplementation: AIAgent {
         }
     }
 
-    // MARK: - Persistance locale (iOS 17+ / macOS 14+)
+    // MARK: - Local Persistence (iOS 17+ / macOS 14+)
 
-    /// Charge les N derniers messages de la conversation la plus récente
-    /// pour alimenter le contexte de l'agent entre les sessions
+    /// Loads the last N messages from the most recent conversation
+    /// to seed the agent's context across sessions
     @available(iOS 17.0, macOS 14.0, watchOS 10.0, tvOS 17.0, *)
     public func loadPreviousContext(limit: Int = 20) async throws -> [AIMessage] {
         guard let manager = historyManager else { return [] }
@@ -196,10 +196,10 @@ public actor AIAgentImplementation: AIAgent {
     }
 }
 
-// MARK: - Helpers privés
+// MARK: - Private Helpers
 
 private extension AIAgentImplementation {
-    /// Crée les clients réseau selon le provider configuré
+    /// Creates network clients based on the configured provider
     static func buildClients(
         configuration: AIConfiguration
     ) -> (openAI: OpenAIClient?, anthropic: AnthropicClient?) {
@@ -215,49 +215,49 @@ private extension AIAgentImplementation {
 // MARK: - Convenience Initializers
 
 public extension AIAgentImplementation {
-    /// Crée un agent GPT-4
+    /// Creates a GPT-4 agent
     static func gpt4(apiKey: String) throws -> AIAgentImplementation {
         let config = AIConfiguration(model: .gpt4, apiKey: apiKey)
         return try AIAgentImplementation(configuration: config)
     }
 
-    /// Crée un agent GPT-4 Turbo
+    /// Creates a GPT-4 Turbo agent
     static func gpt4Turbo(apiKey: String) throws -> AIAgentImplementation {
         let config = AIConfiguration(model: .gpt4Turbo, apiKey: apiKey)
         return try AIAgentImplementation(configuration: config)
     }
 
-    /// Crée un agent Claude 3 Opus
+    /// Creates a Claude 3 Opus agent
     static func claude3Opus(apiKey: String) throws -> AIAgentImplementation {
         let config = AIConfiguration(model: .claude3Opus, apiKey: apiKey)
         return try AIAgentImplementation(configuration: config)
     }
 
-    /// Crée un agent Claude 3 Sonnet
+    /// Creates a Claude 3 Sonnet agent
     static func claude3Sonnet(apiKey: String) throws -> AIAgentImplementation {
         let config = AIConfiguration(model: .claude3Sonnet, apiKey: apiKey)
         return try AIAgentImplementation(configuration: config)
     }
 
-    /// Crée un agent GPT-4o (multimodal, 128k contexte)
+    /// Creates a GPT-4o agent (multimodal, 128k context)
     static func gpt4o(apiKey: String) throws -> AIAgentImplementation {
         let config = AIConfiguration(model: .gpt4o, apiKey: apiKey)
         return try AIAgentImplementation(configuration: config)
     }
 
-    /// Crée un agent GPT-4o Mini (rapide et économique)
+    /// Creates a GPT-4o Mini agent (fast and cost-efficient)
     static func gpt4oMini(apiKey: String) throws -> AIAgentImplementation {
         let config = AIConfiguration(model: .gpt4oMini, apiKey: apiKey)
         return try AIAgentImplementation(configuration: config)
     }
 
-    /// Crée un agent Claude 3.5 Sonnet (haute performance, 200k contexte)
+    /// Creates a Claude 3.5 Sonnet agent (high performance, 200k context)
     static func claude35Sonnet(apiKey: String) throws -> AIAgentImplementation {
         let config = AIConfiguration(model: .claude35Sonnet, apiKey: apiKey)
         return try AIAgentImplementation(configuration: config)
     }
 
-    /// Crée un agent Claude Sonnet 4.6 — dernier modèle Anthropic disponible
+    /// Creates a Claude Sonnet 4.6 agent — latest available Anthropic model
     static func claudeSonnet46(apiKey: String) throws -> AIAgentImplementation {
         let config = AIConfiguration(model: .claudeSonnet46, apiKey: apiKey)
         return try AIAgentImplementation(configuration: config)

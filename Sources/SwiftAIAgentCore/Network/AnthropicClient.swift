@@ -19,7 +19,7 @@ actor AnthropicClient: Sendable {
         let temperature: Double
         let system: String?
         let stream: Bool
-        /// Outils disponibles au format Anthropic (optionnel)
+        /// Available tools in Anthropic format (optional)
         let tools: [ToolDefinition]?
 
         enum CodingKeys: String, CodingKey {
@@ -29,10 +29,10 @@ actor AnthropicClient: Sendable {
 
         struct Message: Encodable {
             let role: String
-            /// Contenu du message — texte ou blocs tool_result selon le rôle
+            /// Message content — plain text or tool_result blocks depending on the role
             let content: MessageContent
 
-            /// Encodage polymorphique : texte simple ou tableau de blocs
+            /// Polymorphic encoding: plain string or array of blocks
             func encode(to encoder: Encoder) throws {
                 var container = encoder.container(keyedBy: MessageCodingKeys.self)
                 try container.encode(role, forKey: .role)
@@ -49,15 +49,15 @@ actor AnthropicClient: Sendable {
             }
         }
 
-        /// Contenu d'un message : texte pur ou blocs de résultats d'outils
+        /// Message content: plain text or tool result blocks
         enum MessageContent {
             case text(String)
             case toolResults([ToolResultBlock])
         }
 
-        /// Bloc de résultat d'outil au format Anthropic
+        /// Tool result block in Anthropic format
         struct ToolResultBlock: Encodable {
-            /// Toujours "tool_result" pour le format Anthropic
+            /// Always "tool_result" for the Anthropic format
             let type: String
             let toolUseId: String
             let content: String
@@ -74,11 +74,11 @@ actor AnthropicClient: Sendable {
             }
         }
 
-        /// Définition d'un outil au format Anthropic
+        /// Tool definition in Anthropic format
         struct ToolDefinition: Encodable {
             let name: String
             let description: String
-            /// Schéma des paramètres au format JSON Schema (clé: "input_schema")
+            /// Parameter schema in JSON Schema format (key: "input_schema")
             let inputSchema: AITool.AIToolParameters
 
             enum CodingKeys: String, CodingKey {
@@ -98,19 +98,19 @@ actor AnthropicClient: Sendable {
             case stopReason = "stop_reason"
         }
 
-        /// Bloc de contenu — peut être un texte ou un appel d'outil
+        /// Content block — can be text or a tool call
         struct Content: Decodable {
             let type: String
             let text: String?
-            /// Identifiant de l'appel d'outil (type "tool_use")
+            /// Tool call identifier (type "tool_use")
             let id: String?
-            /// Nom de l'outil à appeler (type "tool_use")
+            /// Name of the tool to call (type "tool_use")
             let name: String?
-            /// Arguments de l'outil sous forme de dictionnaire brut
+            /// Tool arguments as a raw dictionary
             let input: AnthropicInput?
         }
 
-        /// Représentation intermédiaire pour les arguments d'outil (JSON dynamique)
+        /// Intermediate representation for tool arguments (dynamic JSON)
         struct AnthropicInput: Decodable {
             let raw: [String: AnthropicValue]
 
@@ -119,7 +119,7 @@ actor AnthropicClient: Sendable {
                 raw = try container.decode([String: AnthropicValue].self)
             }
 
-            /// Sérialise les arguments en JSON String pour AIToolCall
+            /// Serializes arguments into a JSON String for AIToolCall
             func toJSONString() -> String {
                 let dict = raw.mapValues { $0.toAny() }
                 guard let data = try? JSONSerialization.data(withJSONObject: dict),
@@ -130,7 +130,7 @@ actor AnthropicClient: Sendable {
             }
         }
 
-        /// Valeur JSON générique pour désérialiser les inputs d'outils Anthropic
+        /// Generic JSON value for deserializing Anthropic tool inputs
         enum AnthropicValue: Decodable {
             case string(String)
             case int(Int)
@@ -192,7 +192,7 @@ actor AnthropicClient: Sendable {
 
         let response = try JSONDecoder().decode(MessagesResponse.self, from: data)
 
-        // Extrait le premier bloc texte disponible
+        // Extract the first available text block
         guard let textContent = response.content.first(where: { $0.type == "text" })?.text else {
             throw AIError.invalidResponse(statusCode: 200, message: "No content in response")
         }
@@ -200,17 +200,17 @@ actor AnthropicClient: Sendable {
         return AIMessage(role: .assistant, content: textContent)
     }
 
-    /// Envoie des messages avec des outils disponibles — le modèle peut retourner des appels d'outils
+    /// Sends messages with available tools — the model may return tool calls
     func sendCompletionWithTools(messages: [AIMessage], tools: [AITool]) async throws -> AIMessageWithTools {
         let request = try createRequest(messages: messages, tools: tools, stream: false)
         let (data, _) = try await networkClient.execute(request: request)
 
         let response = try JSONDecoder().decode(MessagesResponse.self, from: data)
 
-        // Extrait le contenu textuel (peut être absent si le modèle n'appelle que des outils)
+        // Extract text content (may be absent if the model only calls tools)
         let textContent = response.content.first(where: { $0.type == "text" })?.text ?? ""
 
-        // Extrait les appels d'outils des blocs "tool_use"
+        // Extract tool calls from "tool_use" blocks
         let toolCalls: [AIToolCall] = response.content.compactMap { block in
             guard block.type == "tool_use",
                   let callId = block.id,
@@ -242,7 +242,7 @@ actor AnthropicClient: Sendable {
                             if let data = jsonString.data(using: .utf8),
                                let event = try? JSONDecoder().decode(StreamEvent.self, from: data) {
 
-                                // Traite les différents types d'événements du stream Anthropic
+                                // Handle the different Anthropic stream event types
                                 switch event.type {
                                 case "content_block_delta":
                                     if let text = event.delta?.text {
@@ -271,10 +271,10 @@ actor AnthropicClient: Sendable {
     private func createRequest(messages: [AIMessage], tools: [AITool]?, stream: Bool) throws -> URLRequest {
         try configuration.validate()
 
-        // Échec explicite si l'URL de base est invalide — ne jamais crasher en production
+        // Fail explicitly if the base URL is invalid — never crash in production
         let rawURL = "\(configuration.model.provider.baseURL)/messages"
         guard let url = URL(string: rawURL) else {
-            throw AIError.invalidContext("URL de l'endpoint Anthropic invalide : \(rawURL)")
+            throw AIError.invalidContext("Invalid Anthropic endpoint URL: \(rawURL)")
         }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -283,14 +283,14 @@ actor AnthropicClient: Sendable {
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
         request.timeoutInterval = configuration.timeout
 
-        // Extrait le message système (géré séparément par l'API Anthropic)
+        // Extract the system message (handled separately by the Anthropic API)
         let systemMessage = messages.first(where: { $0.role == .system })?.content
         let conversationMessages = messages.filter { $0.role != .system }
 
-        // Convertit les messages en format Anthropic, en gérant les tool results
+        // Convert messages to Anthropic format, handling tool results
         let anthropicMessages = conversationMessages.map { message -> MessagesRequest.Message in
             if message.role == .tool, let toolCallId = message.metadata?["tool_call_id"] {
-                // Les résultats d'outils utilisent un contenu structuré en blocs
+                // Tool results use a structured block content format
                 let block = MessagesRequest.ToolResultBlock(
                     toolUseId: toolCallId,
                     content: message.content
@@ -306,7 +306,7 @@ actor AnthropicClient: Sendable {
             )
         }
 
-        // Convertit les AITool en ToolDefinition Anthropic si présents
+        // Convert AITool values to Anthropic ToolDefinition if provided
         let toolDefinitions = tools.map { toolArray in
             toolArray.map { tool in
                 MessagesRequest.ToolDefinition(
