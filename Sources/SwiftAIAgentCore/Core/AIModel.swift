@@ -128,7 +128,6 @@ public struct AIModel: Codable, Sendable, Hashable {
         name: "claude-haiku-4-5-20251001",
         maxTokens: 200000
     )
-}
 
     // MARK: - OpenAI Latest Models
 
@@ -154,3 +153,4 @@ public struct AIModel: Codable, Sendable, Hashable {
         name: "claude-3-7-sonnet-20250219",
         maxTokens: 200000
     )
+}
