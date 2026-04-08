@@ -6,6 +6,7 @@
 [![Platforms](https://img.shields.io/badge/Platforms-iOS%20%7C%20macOS%20%7C%20watchOS%20%7C%20tvOS-blue.svg)](https://developer.apple.com/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![SPM Compatible](https://img.shields.io/badge/SPM-compatible-brightgreen.svg)](https://swift.org/package-manager/)
+[![CI](https://github.com/VDurocher/Swift-AI-Agent-Core/actions/workflows/swift.yml/badge.svg?branch=master)](https://github.com/VDurocher/Swift-AI-Agent-Core/actions/workflows/swift.yml)
 
 **SwiftAIAgentCore** integrates OpenAI and Anthropic language models into Apple platform apps. Built with Swift 6.0 strict concurrency, clean architecture, and local persistence via SwiftData.
 
@@ -24,10 +25,28 @@
 
 ## Supported Models
 
-| Provider | Models |
-|----------|--------|
-| OpenAI | GPT-4, GPT-4 Turbo, GPT-3.5 Turbo, GPT-4o, GPT-4o Mini |
-| Anthropic | Claude 3 Opus, Claude 3 Sonnet, Claude 3 Haiku, Claude 3.5 Sonnet, Claude 3.5 Haiku, Claude Sonnet 4.6 |
+### OpenAI
+
+| Model | Constant | Context |
+|-------|----------|---------|
+| GPT-4 | `.gpt4` | 8k |
+| GPT-4 Turbo | `.gpt4Turbo` | 128k |
+| GPT-3.5 Turbo | `.gpt35Turbo` | 16k |
+| GPT-4o | `.gpt4o` | 128k |
+| GPT-4o Mini | `.gpt4oMini` | 128k |
+
+### Anthropic
+
+| Model | Constant | Context |
+|-------|----------|---------|
+| Claude 3 Haiku | `.claude3Haiku` | 200k |
+| Claude 3 Sonnet | `.claude3Sonnet` | 200k |
+| Claude 3 Opus | `.claude3Opus` | 200k |
+| Claude 3.5 Haiku | `.claude35Haiku` | 200k |
+| Claude 3.5 Sonnet | `.claude35Sonnet` | 200k |
+| Claude Haiku 4.5 | `.claudeHaiku45` | 200k |
+| Claude Sonnet 4.6 | `.claudeSonnet46` | 200k |
+| Claude Opus 4.6 | `.claudeOpus46` | 200k |
 
 ---
 
@@ -68,7 +87,7 @@ Or add it via Xcode:
 import SwiftAIAgentCore
 
 // Create an agent with a convenience initializer
-let agent = try AIAgentImplementation.gpt4(apiKey: "your-openai-api-key")
+let agent = try AIAgentImplementation.gpt4o(apiKey: "your-openai-api-key")
 
 // Send a single message — returns the response as a plain String
 let response = try await agent.send(message: "Explain Swift concurrency in one sentence.")
@@ -99,7 +118,7 @@ print(response.content)
 ### Anthropic (Claude)
 
 ```swift
-let claudeAgent = try AIAgentImplementation.claude3Opus(apiKey: "your-anthropic-api-key")
+let claudeAgent = try AIAgentImplementation.claudeSonnet46(apiKey: "your-anthropic-api-key")
 let response = try await claudeAgent.send(message: "Summarize the Swift concurrency model.")
 print(response)
 ```
@@ -284,7 +303,7 @@ Default implementations are provided for `send(message:)`, `stream(message:)`, `
 
 ```swift
 let config = AIConfiguration(
-    model: .gpt4Turbo,
+    model: .claudeSonnet46,
     apiKey: "your-api-key",
     temperature: 0.7,          // 0.0–2.0
     maxResponseTokens: 2000,
@@ -298,16 +317,25 @@ let agent = try AIAgentImplementation(configuration: config)
 
 ```swift
 // OpenAI
-AIAgentImplementation.gpt4(apiKey:)
-AIAgentImplementation.gpt4Turbo(apiKey:)
-AIAgentImplementation.gpt4o(apiKey:)
-AIAgentImplementation.gpt4oMini(apiKey:)
+AIAgentImplementation.gpt4(apiKey:)           // GPT-4, 8k context
+AIAgentImplementation.gpt4Turbo(apiKey:)      // GPT-4 Turbo, 128k context
+AIAgentImplementation.gpt35Turbo(apiKey:)     // GPT-3.5 Turbo, 16k context
+AIAgentImplementation.gpt4o(apiKey:)          // GPT-4o, 128k context
+AIAgentImplementation.gpt4oMini(apiKey:)      // GPT-4o Mini, 128k context
 
-// Anthropic
-AIAgentImplementation.claude3Opus(apiKey:)
+// Anthropic — Claude 3
+AIAgentImplementation.claude3Haiku(apiKey:)   // fastest Claude 3
 AIAgentImplementation.claude3Sonnet(apiKey:)
-AIAgentImplementation.claude35Sonnet(apiKey:)
+AIAgentImplementation.claude3Opus(apiKey:)    // most capable Claude 3
+
+// Anthropic — Claude 3.5
+AIAgentImplementation.claude35Haiku(apiKey:)  // fast and cost-efficient
+AIAgentImplementation.claude35Sonnet(apiKey:) // high performance
+
+// Anthropic — Claude 4
+AIAgentImplementation.claudeHaiku45(apiKey:)  // fastest Claude 4
 AIAgentImplementation.claudeSonnet46(apiKey:)
+AIAgentImplementation.claudeOpus46(apiKey:)   // most capable Claude 4
 ```
 
 ### Retry Policies
