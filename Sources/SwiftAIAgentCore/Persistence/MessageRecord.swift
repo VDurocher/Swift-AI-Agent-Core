@@ -4,7 +4,7 @@ import SwiftData
 /// Persistent record of an individual message in a conversation
 @available(iOS 17.0, macOS 14.0, watchOS 10.0, tvOS 17.0, *)
 @Model
-public final class MessageRecord {
+public final class MessageRecord: @unchecked Sendable {
     public var id: UUID
     /// Message role: "user", "assistant" or "system"
     public var role: String

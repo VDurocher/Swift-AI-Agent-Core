@@ -4,7 +4,7 @@ import SwiftData
 /// Persistent record of a complete conversation
 @available(iOS 17.0, macOS 14.0, watchOS 10.0, tvOS 17.0, *)
 @Model
-public final class ConversationRecord {
+public final class ConversationRecord: @unchecked Sendable {
     public var id: UUID
     public var createdAt: Date
     /// Name of the LLM model used (e.g. "gpt-4", "claude-3-opus-20240229")
