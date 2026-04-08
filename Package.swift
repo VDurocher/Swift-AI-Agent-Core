@@ -26,5 +26,5 @@ let package = Package(
             dependencies: ["SwiftAIAgentCore"]
         )
     ],
-    swiftLanguageVersions: [.v6]
+    swiftLanguageModes: [.v6]
 )

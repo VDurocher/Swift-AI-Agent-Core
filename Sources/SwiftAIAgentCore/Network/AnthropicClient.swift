@@ -228,7 +228,7 @@ actor AnthropicClient: Sendable {
             Task {
                 do {
                     let request = try createRequest(messages: messages, tools: nil, stream: true)
-                    let stream = networkClient.stream(request: request)
+                    let stream = await networkClient.stream(request: request)
 
                     for try await data in stream {
                         let lines = String(data: data, encoding: .utf8)?

@@ -145,43 +145,46 @@ public actor AIAgentImplementation: AIAgent {
         }
     }
 
-    public func stream(messages: [AIMessage]) -> AsyncThrowingStream<String, Error> {
-        guard configuration.model.supportsStreaming else {
-            return AsyncThrowingStream { continuation in
-                continuation.finish(throwing: AIError.streamingError("Model does not support streaming"))
+    nonisolated public func stream(messages: [AIMessage]) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    for try await chunk in try await self._streamMessages(messages) {
+                        continuation.yield(chunk)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
             }
+        }
+    }
+
+    private func _streamMessages(_ messages: [AIMessage]) async throws -> AsyncThrowingStream<String, Error> {
+        guard configuration.model.supportsStreaming else {
+            throw AIError.streamingError("Model does not support streaming")
         }
 
-        // Validate token count
-        do {
-            try TokenEstimator.validate(
-                messages: messages,
-                model: configuration.model,
-                maxResponseTokens: configuration.maxResponseTokens
-            )
-        } catch {
-            return AsyncThrowingStream { continuation in
-                continuation.finish(throwing: error)
-            }
-        }
+        // Validate token count before streaming
+        try TokenEstimator.validate(
+            messages: messages,
+            model: configuration.model,
+            maxResponseTokens: configuration.maxResponseTokens
+        )
 
         // Route to the appropriate client
         switch configuration.model.provider {
         case .openai:
             guard let client = openAIClient else {
-                return AsyncThrowingStream { continuation in
-                    continuation.finish(throwing: AIError.invalidContext("OpenAI client not initialized"))
-                }
+                throw AIError.invalidContext("OpenAI client not initialized")
             }
-            return client.streamCompletion(messages: messages)
+            return await client.streamCompletion(messages: messages)
 
         case .anthropic:
             guard let client = anthropicClient else {
-                return AsyncThrowingStream { continuation in
-                    continuation.finish(throwing: AIError.invalidContext("Anthropic client not initialized"))
-                }
+                throw AIError.invalidContext("Anthropic client not initialized")
             }
-            return client.streamCompletion(messages: messages)
+            return await client.streamCompletion(messages: messages)
         }
     }
 
