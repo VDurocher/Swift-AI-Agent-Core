@@ -38,7 +38,9 @@ public struct ConversationDetailView: View {
             }
         }
         .navigationTitle("Conversation")
+        #if !os(macOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
     }
 }
 
