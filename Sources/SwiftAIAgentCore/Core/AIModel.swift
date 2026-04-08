@@ -129,3 +129,28 @@ public struct AIModel: Codable, Sendable, Hashable {
         maxTokens: 200000
     )
 }
+
+    // MARK: - OpenAI Latest Models
+
+    /// GPT-4.1 — flagship model with 1M context (April 2025)
+    public static let gpt41 = AIModel(
+        provider: .openai,
+        name: "gpt-4.1",
+        maxTokens: 1047576
+    )
+
+    /// GPT-4.1 Mini — lightweight variant with 1M context
+    public static let gpt41Mini = AIModel(
+        provider: .openai,
+        name: "gpt-4.1-mini",
+        maxTokens: 1047576
+    )
+
+    // MARK: - Anthropic Latest Models
+
+    /// Claude 3.7 Sonnet — extended thinking, 200k context (February 2025)
+    public static let claude37Sonnet = AIModel(
+        provider: .anthropic,
+        name: "claude-3-7-sonnet-20250219",
+        maxTokens: 200000
+    )

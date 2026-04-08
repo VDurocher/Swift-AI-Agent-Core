@@ -4,7 +4,7 @@
 
 [![Swift 6.0](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/Platforms-iOS%20%7C%20macOS%20%7C%20watchOS%20%7C%20tvOS-blue.svg)](https://developer.apple.com/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial-blue.svg)](LICENSE)
 [![SPM Compatible](https://img.shields.io/badge/SPM-compatible-brightgreen.svg)](https://swift.org/package-manager/)
 [![CI](https://github.com/VDurocher/Swift-AI-Agent-Core/actions/workflows/swift.yml/badge.svg?branch=master)](https://github.com/VDurocher/Swift-AI-Agent-Core/actions/workflows/swift.yml)
 
@@ -34,6 +34,8 @@
 | GPT-3.5 Turbo | `.gpt35Turbo` | 16k |
 | GPT-4o | `.gpt4o` | 128k |
 | GPT-4o Mini | `.gpt4oMini` | 128k |
+| GPT-4.1 | `.gpt41` | 1M |
+| GPT-4.1 Mini | `.gpt41Mini` | 1M |
 
 ### Anthropic
 
@@ -46,6 +48,7 @@
 | Claude 3.5 Sonnet | `.claude35Sonnet` | 200k |
 | Claude Haiku 4.5 | `.claudeHaiku45` | 200k |
 | Claude Sonnet 4.6 | `.claudeSonnet46` | 200k |
+| Claude 3.7 Sonnet | `.claude37Sonnet` | 200k |
 | Claude Opus 4.6 | `.claudeOpus46` | 200k |
 
 ---
@@ -509,7 +512,7 @@ swift test
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+PolyForm Noncommercial 1.0 — see [LICENSE](LICENSE). Commercial use requires a separate license (contact durochervictor@gmail.com).
 
 ---
 

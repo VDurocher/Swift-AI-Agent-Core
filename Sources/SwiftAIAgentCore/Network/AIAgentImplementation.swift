@@ -291,4 +291,23 @@ public extension AIAgentImplementation {
     static func claudeOpus46(apiKey: String) throws -> AIAgentImplementation {
         try AIAgentImplementation(configuration: AIConfiguration(model: .claudeOpus46, apiKey: apiKey))
     }
+
+    // MARK: OpenAI Latest
+
+    /// Creates a GPT-4.1 agent (1M context, April 2025)
+    static func gpt41(apiKey: String) throws -> AIAgentImplementation {
+        try AIAgentImplementation(configuration: AIConfiguration(model: .gpt41, apiKey: apiKey))
+    }
+
+    /// Creates a GPT-4.1 Mini agent (1M context, lightweight)
+    static func gpt41Mini(apiKey: String) throws -> AIAgentImplementation {
+        try AIAgentImplementation(configuration: AIConfiguration(model: .gpt41Mini, apiKey: apiKey))
+    }
+
+    // MARK: Anthropic — Claude 3.7
+
+    /// Creates a Claude 3.7 Sonnet agent (200k context, extended thinking)
+    static func claude37Sonnet(apiKey: String) throws -> AIAgentImplementation {
+        try AIAgentImplementation(configuration: AIConfiguration(model: .claude37Sonnet, apiKey: apiKey))
+    }
 }

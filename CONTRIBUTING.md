@@ -29,7 +29,7 @@ Enhancement suggestions are tracked as GitHub issues. When creating an enhanceme
 
 ### Pull Requests
 
-1. **Fork the repo** and create your branch from `main`
+1. **Fork the repo** and create your branch from `master`
 2. **Follow the existing code style** (see below)
 3. **Add tests** for any new functionality
 4. **Update documentation** as needed
