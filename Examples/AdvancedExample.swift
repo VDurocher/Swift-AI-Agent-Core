@@ -41,7 +41,7 @@ struct AdvancedExample {
 
         let messages = [
             AIMessage.system("You are a helpful assistant."),
-            AIMessage.user("Explain quantum computing."),
+            AIMessage.user("Explain quantum computing.")
         ]
 
         // Estimate tokens before sending

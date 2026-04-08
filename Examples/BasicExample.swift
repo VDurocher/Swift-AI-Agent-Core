@@ -70,7 +70,7 @@ struct BasicExample {
         // Build a conversation with context
         let conversation = [
             AIMessage.system("You are a helpful Swift programming assistant."),
-            AIMessage.user("What is the difference between struct and class in Swift?"),
+            AIMessage.user("What is the difference between struct and class in Swift?")
         ]
 
         let response = try await agent.send(messages: conversation)

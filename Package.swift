@@ -13,7 +13,7 @@ let package = Package(
     products: [
         .library(
             name: "SwiftAIAgentCore",
-            targets: ["SwiftAIAgentCore"]),
+            targets: ["SwiftAIAgentCore"])
     ],
     dependencies: [],
     targets: [
@@ -24,7 +24,7 @@ let package = Package(
         .testTarget(
             name: "SwiftAIAgentCoreTests",
             dependencies: ["SwiftAIAgentCore"]
-        ),
+        )
     ],
     swiftLanguageVersions: [.v6]
 )
