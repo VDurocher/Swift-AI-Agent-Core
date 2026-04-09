@@ -92,7 +92,9 @@ public extension AIAgent {
                 history.append(AIMessage(
                     role: .tool,
                     content: output,
-                    metadata: ["tool_call_id": call.id]
+                    // tool_call_id: used by OpenAI/Anthropic to match results to calls
+                    // tool_name: used by Gemini which requires the function name in functionResponse
+                    metadata: ["tool_call_id": call.id, "tool_name": call.name]
                 ))
             }
         }

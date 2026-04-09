@@ -138,10 +138,11 @@ actor GeminiClient: Sendable {
     private func encodeMessage(_ message: AIMessage) -> GeminiContent {
         let role = message.role == .assistant ? "model" : "user"
 
-        // Tool result messages
-        if message.role == .tool, let callId = message.metadata?["tool_call_id"] {
+        // Tool result messages — Gemini expects the function name (not the call ID)
+        if message.role == .tool,
+           let functionName = message.metadata?["tool_name"] ?? message.metadata?["tool_call_id"] {
             let part = GeminiPart(functionResponse: FunctionResponse(
-                name: callId,
+                name: functionName,
                 response: GeminiResponsePayload(content: message.content)
             ))
             return GeminiContent(role: "user", parts: [part])
@@ -211,11 +212,12 @@ private struct GeminiPart: Encodable {
     init(functionCall: FunctionCall) { self.text = nil; self.inlineData = nil; self.functionCall = functionCall; self.functionResponse = nil }
     init(functionResponse: FunctionResponse) { self.text = nil; self.inlineData = nil; self.functionCall = nil; self.functionResponse = functionResponse }
 
+    // Gemini REST API v1 uses camelCase throughout
     enum CodingKeys: String, CodingKey {
         case text
-        case inlineData = "inline_data"
-        case functionCall = "function_call"
-        case functionResponse = "function_response"
+        case inlineData       // "inlineData"
+        case functionCall     // "functionCall"
+        case functionResponse // "functionResponse"
     }
 }
 
@@ -282,12 +284,7 @@ private struct GenerateContentResponse: Decodable {
 
     struct Candidate: Decodable {
         let content: Content
-        let finishReason: String?
-
-        enum CodingKeys: String, CodingKey {
-            case content
-            case finishReason = "finishReason"
-        }
+        let finishReason: String? // Gemini returns "finishReason" (camelCase) — matches Swift default
     }
 
     struct Content: Decodable {
@@ -297,12 +294,7 @@ private struct GenerateContentResponse: Decodable {
 
     struct Part: Decodable {
         let text: String?
-        let functionCall: FunctionCallResponse?
-
-        enum CodingKeys: String, CodingKey {
-            case text
-            case functionCall = "functionCall"
-        }
+        let functionCall: FunctionCallResponse? // Gemini returns "functionCall" (camelCase)
     }
 
     struct FunctionCallResponse: Decodable {

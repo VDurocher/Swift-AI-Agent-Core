@@ -321,9 +321,9 @@ enum AnthropicScalar: Codable, Sendable {
     init(from decoder: Decoder) throws {
         let c = try decoder.singleValueContainer()
         if let v = try? c.decode(String.self) { self = .string(v) }
+        else if let v = try? c.decode(Bool.self) { self = .bool(v) }  // before Int — JSON bool safety
         else if let v = try? c.decode(Int.self) { self = .int(v) }
         else if let v = try? c.decode(Double.self) { self = .double(v) }
-        else if let v = try? c.decode(Bool.self) { self = .bool(v) }
         else { self = .null }
     }
 
@@ -384,17 +384,8 @@ private struct MessagesResponse: Decodable {
         }
 
         func toJSONString() -> String {
-            var dict: [String: Any] = [:]
-            for (key, value) in raw {
-                switch value {
-                case .string(let v): dict[key] = v
-                case .int(let v): dict[key] = v
-                case .double(let v): dict[key] = v
-                case .bool(let v): dict[key] = v
-                case .null: dict[key] = NSNull()
-                }
-            }
-            guard let data = try? JSONSerialization.data(withJSONObject: dict),
+            // Use JSONEncoder on the typed dict — avoids JSONSerialization NSNumber ambiguity
+            guard let data = try? JSONEncoder().encode(raw),
                   let str = String(data: data, encoding: .utf8) else { return "{}" }
             return str
         }
