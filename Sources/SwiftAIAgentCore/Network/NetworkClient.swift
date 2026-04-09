@@ -32,9 +32,10 @@ actor NetworkClient: Sendable {
                 throw AIError.rateLimit(retryAfter: retryAfter)
             }
 
-            // Handle errors
+            // Handle errors — truncate body to avoid leaking sensitive provider info
             if !(200...299).contains(httpResponse.statusCode) {
-                let message = String(data: data, encoding: .utf8)
+                let raw = String(data: data, encoding: .utf8)
+                let message = raw.map { String($0.prefix(Self.maxErrorMessageLength)) }
                 throw AIError.invalidResponse(statusCode: httpResponse.statusCode, message: message)
             }
 
@@ -50,6 +51,12 @@ actor NetworkClient: Sendable {
             throw error
         }
     }
+
+    /// Maximum size of a single SSE message buffer (1 MB) — guards against unbounded memory growth
+    private static let maxSSEBufferSize = 1 * 1024 * 1024
+
+    /// Maximum length of an HTTP error body exposed in AIError (prevents leaking large server responses)
+    private static let maxErrorMessageLength = 500
 
     /// Stream response using Server-Sent Events (SSE)
     func stream(
@@ -71,8 +78,13 @@ actor NetworkClient: Sendable {
                     for try await byte in bytes {
                         buffer.append(byte)
 
-                        // Check for SSE message delimiter
-                        if buffer.suffix(2) == Data([0x0A, 0x0A]) { // \n\n
+                        // Guard against unbounded memory growth from a malformed SSE stream
+                        if buffer.count > Self.maxSSEBufferSize {
+                            throw AIError.streamingError("SSE message exceeded the 1 MB buffer limit")
+                        }
+
+                        // Check for SSE message delimiter (\n\n)
+                        if buffer.suffix(2) == Data([0x0A, 0x0A]) {
                             continuation.yield(buffer)
                             buffer.removeAll(keepingCapacity: true)
                         }

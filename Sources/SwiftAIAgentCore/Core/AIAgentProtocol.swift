@@ -82,8 +82,12 @@ public extension AIAgent {
             // Append the assistant message with embedded tool calls for correct history encoding
             history.append(result.asHistoryMessage)
 
-            // Execute each tool call sequentially and append results
+            // Only execute tool calls whose names match the declared tools
+            let validToolNames = Set(tools.map(\.name))
             for call in result.toolCalls {
+                guard validToolNames.contains(call.name) else {
+                    throw AIError.invalidContext("Model requested unknown tool: \(call.name)")
+                }
                 let output = try await executor(call)
                 history.append(AIMessage(
                     role: .tool,

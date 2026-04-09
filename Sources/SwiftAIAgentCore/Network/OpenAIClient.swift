@@ -41,7 +41,7 @@ actor OpenAIClient: Sendable {
 
     func streamCompletion(messages: [AIMessage]) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
-            Task {
+            let task = Task {
                 do {
                     let request = try self.buildRequest(messages: messages, tools: nil, stream: true, jsonMode: false)
                     let stream = await self.networkClient.stream(request: request)
@@ -68,6 +68,8 @@ actor OpenAIClient: Sendable {
                     continuation.finish(throwing: error)
                 }
             }
+            // Cancel the network task when the consumer stops iterating the stream
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 
