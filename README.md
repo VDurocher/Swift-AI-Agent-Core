@@ -1,22 +1,26 @@
 # Swift AI Agent Core
 
-> Production-grade Swift package for integrating LLM agents into iOS, macOS, watchOS, and tvOS apps.
+> Production-grade Swift package for integrating multi-provider LLM agents into iOS, macOS, watchOS, and tvOS apps.
 
 [![Swift 6.0](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/Platforms-iOS%20%7C%20macOS%20%7C%20watchOS%20%7C%20tvOS-blue.svg)](https://developer.apple.com/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![SPM Compatible](https://img.shields.io/badge/SPM-compatible-brightgreen.svg)](https://swift.org/package-manager/)
 
-**SwiftAIAgentCore** integrates OpenAI and Anthropic language models into Apple platform apps. Built with Swift 6.0 strict concurrency, clean architecture, and local persistence via SwiftData.
+**SwiftAIAgentCore** is a unified Swift interface for OpenAI, Anthropic Claude, Google Gemini, and local Ollama models. Built with Swift 6.0 strict concurrency, a clean protocol-oriented architecture, and local persistence via SwiftData.
 
 ---
 
 ## Features
 
-- **Streaming responses** — real-time chunks via `AsyncThrowingStream`
+- **Agentic ReAct loop** — `run(messages:tools:executor:maxSteps:)` automatically executes tool calls in a loop until the model produces a final text response
+- **Vision / multi-modal** — attach images (URL or raw bytes) to any user message; encoded correctly for GPT-4o, Claude 3+, and Gemini
+- **Multi-provider** — OpenAI, Anthropic Claude, Google Gemini, and local Ollama behind one `AIAgent` protocol
+- **Structured outputs** — `send<T>(messages:as:)` decodes JSON directly into any `Codable` type, with native JSON mode on OpenAI and Gemini
+- **Prompt caching** — mark Anthropic messages with `cached: true` to enable the prompt-caching beta and reduce latency and cost on repeated context
+- **Streaming responses** — real-time chunks via `AsyncThrowingStream` (SSE)
 - **Automatic retry** — exponential backoff with configurable policies
-- **Token management** — estimate and validate token usage before sending requests
-- **Function calling** — tool use API compatible with both OpenAI and Anthropic formats
+- **Token management** — estimate and validate usage before sending requests
 - **Local persistence** — conversation history via SwiftData (iOS 17+ / macOS 14+)
 - **Typed errors** — exhaustive `AIError` enum covering all failure scenarios
 - **Swift 6.0 concurrency** — fully `Sendable` types, `actor`-based implementation
@@ -26,8 +30,10 @@
 
 | Provider | Models |
 |----------|--------|
-| OpenAI | GPT-4, GPT-4 Turbo, GPT-3.5 Turbo, GPT-4o, GPT-4o Mini |
-| Anthropic | Claude 3 Opus, Claude 3 Sonnet, Claude 3 Haiku, Claude 3.5 Sonnet, Claude 3.5 Haiku, Claude Sonnet 4.6 |
+| OpenAI | GPT-4, GPT-4 Turbo, GPT-3.5 Turbo, GPT-4o, GPT-4o Mini, GPT-4.1, GPT-4.1 Mini |
+| Anthropic | Claude 3 Haiku/Sonnet/Opus, Claude 3.5 Haiku/Sonnet, Claude 3.7 Sonnet, Claude Haiku 4.5, Claude Sonnet 4.6, Claude Opus 4.6 |
+| Google | Gemini 2.0 Flash, Gemini 2.0 Flash Lite, Gemini 1.5 Pro, Gemini 1.5 Flash |
+| Ollama (local) | Llama 3.2, Llama 3.1, Mistral, Phi-4, any custom model |
 
 ---
 
@@ -67,10 +73,19 @@ Or add it via Xcode:
 ```swift
 import SwiftAIAgentCore
 
-// Create an agent with a convenience initializer
-let agent = try AIAgentImplementation.gpt4(apiKey: "your-openai-api-key")
+// OpenAI
+let agent = try AIAgentImplementation.gpt4o(apiKey: "sk-...")
 
-// Send a single message — returns the response as a plain String
+// Anthropic Claude
+let claude = try AIAgentImplementation.claudeSonnet46(apiKey: "sk-ant-...")
+
+// Google Gemini
+let gemini = try AIAgentImplementation.gemini20Flash(apiKey: "AIza...")
+
+// Ollama (local — no API key needed)
+let local = try AIAgentImplementation.ollamaLlama32()
+
+// Send a message
 let response = try await agent.send(message: "Explain Swift concurrency in one sentence.")
 print(response)
 ```
@@ -91,18 +106,175 @@ let conversation: [AIMessage] = [
     .user("What is a protocol?"),
 ]
 
-// Returns an AIMessage with role .assistant
 let response = try await agent.send(messages: conversation)
 print(response.content)
 ```
 
-### Anthropic (Claude)
+---
+
+## Agentic Loop (ReAct Pattern)
+
+`run(messages:tools:executor:maxSteps:)` automatically calls tools and feeds results back until the model produces a final text answer — no manual loop needed.
 
 ```swift
-let claudeAgent = try AIAgentImplementation.claude3Opus(apiKey: "your-anthropic-api-key")
-let response = try await claudeAgent.send(message: "Summarize the Swift concurrency model.")
-print(response)
+let answer = try await agent.run(
+    messages: [.user("What is the current temperature in Paris?")],
+    tools: [weatherTool],
+    executor: { call in
+        // Execute the tool and return the result as a String
+        let args = call.decodeArguments()
+        let city = args?["city"] as? String ?? "Paris"
+        return "22°C, sunny"
+    },
+    maxSteps: 10
+)
+print(answer.content)
 ```
+
+The loop appends tool calls and results to the conversation history, then sends the enriched history back to the model — repeating until `requiresToolExecution` is false or `maxSteps` is reached (throws `AIError.agentLoopExceeded`).
+
+---
+
+## Vision (Multi-Modal)
+
+Attach images to any user message. Supported on GPT-4o, Claude 3+, and Gemini.
+
+```swift
+// From a URL
+let image = AIImageContent.url(URL(string: "https://example.com/photo.jpg")!)
+
+// From raw bytes (e.g. UIImage → Data)
+let jpegData = uiImage.jpegData(compressionQuality: 0.8)!
+let image = AIImageContent.data(jpegData, mimeType: "image/jpeg")
+
+// Attach to a message
+let response = try await agent.send(messages: [
+    .user("What is in this image?", images: [image])
+])
+print(response.content)
+```
+
+---
+
+## Google Gemini
+
+```swift
+let gemini = try AIAgentImplementation.gemini20Flash(apiKey: "AIza...")
+
+// Standard completion
+let reply = try await gemini.send(message: "Hello from Gemini!")
+
+// Streaming
+for try await chunk in gemini.stream(message: "Tell me a story") {
+    print(chunk, terminator: "")
+}
+
+// Tool use
+let result = try await gemini.send(messages: messages, tools: [myTool])
+```
+
+All Gemini models support vision, tool use, streaming, JSON mode, and the agentic loop.
+
+---
+
+## Ollama (Local Models)
+
+Run models locally with [Ollama](https://ollama.com) — no API key required.
+
+```swift
+// Predefined models
+let llama = try AIAgentImplementation.ollamaLlama32()
+let mistral = try AIAgentImplementation.ollamaMistral()
+
+// Any custom model
+let custom = try AIAgentImplementation.ollamaCustom(name: "deepseek-r1:7b")
+
+let reply = try await llama.send(message: "Hello!")
+```
+
+Ollama uses the OpenAI-compatible endpoint at `http://localhost:11434/v1` — same wire format, zero extra code.
+
+---
+
+## Structured Outputs
+
+Decode the model's JSON response directly into a `Codable` type. Uses native JSON mode on OpenAI and Gemini; injects a system instruction for Anthropic.
+
+```swift
+struct Product: Decodable, Sendable {
+    let name: String
+    let price: Double
+    let inStock: Bool
+}
+
+let product = try await agent.send(
+    messages: [.user("Give me a JSON product example.")],
+    as: Product.self
+)
+print(product.name, product.price)
+```
+
+Markdown code fences (` ```json ... ``` `) are stripped automatically before decoding.
+
+---
+
+## Prompt Caching (Anthropic)
+
+Mark system messages or long context as cached to reduce latency and cost on repeated requests. Requires Claude 3.5+ / 3.7+ / 4.x.
+
+```swift
+let agent = try AIAgentImplementation.claudeSonnet46(apiKey: "sk-ant-...")
+
+// The cached: true flag adds cache_control: {type:"ephemeral"} on this block
+// and enables the anthropic-beta: prompt-caching-2024-07-31 header automatically
+let messages: [AIMessage] = [
+    .system("You are an expert in the following 100k-token document: \(document)", cached: true),
+    .user("Summarize section 3.")
+]
+
+let response = try await agent.send(messages: messages)
+```
+
+---
+
+## Function Calling (Tool Use)
+
+```swift
+// 1. Define a tool
+let weatherTool = AITool(
+    name: "get_weather",
+    description: "Returns the current weather for a city",
+    parameters: AIToolParameters(
+        properties: [
+            "city": AIToolProperty(type: "string", description: "City name"),
+            "unit": AIToolProperty(
+                type: "string",
+                description: "Temperature unit",
+                enumValues: ["celsius", "fahrenheit"]
+            )
+        ],
+        required: ["city"]
+    )
+)
+
+// 2. Send with tools — the model may request a tool call
+let result = try await agent.send(messages: conversation, tools: [weatherTool])
+
+// 3. Execute the tool and return results
+if result.requiresToolExecution {
+    for toolCall in result.toolCalls {
+        let args = toolCall.decodeArguments() // [String: Any]?
+        let toolResult = AIToolResult(toolCallId: toolCall.id, content: "22°C, sunny")
+        let finalResponse = try await agent.send(
+            messages: conversation + [result.asHistoryMessage],
+            toolResults: [toolResult]
+        )
+        print(finalResponse.message.content)
+    }
+}
+```
+
+> **Tip:** For multi-step tool use, prefer `run(messages:tools:executor:maxSteps:)` over manual loops.
 
 ---
 
@@ -164,9 +336,7 @@ struct ChatView: View {
 
 ## Local Persistence
 
-The persistence layer is powered by **SwiftData** and stores all data on-device. It requires iOS 17.0+ / macOS 14.0+ / watchOS 10.0+ / tvOS 17.0+.
-
-### Setup
+The persistence layer is powered by **SwiftData** and stores all data on-device. Requires iOS 17.0+ / macOS 14.0+.
 
 ```swift
 import SwiftUI
@@ -188,74 +358,9 @@ let agent = try AIAgentImplementation(
 
 // Every call to send() now auto-saves the conversation locally
 let response = try await agent.send(message: "Hello!")
-```
 
-### SwiftUI History View
-
-The package provides a ready-to-use `HistoryView` that lists conversations with delete support:
-
-```swift
-@main
-struct MyApp: App {
-    let container = try! ModelContainer(for: ConversationRecord.self, MessageRecord.self)
-
-    var body: some Scene {
-        WindowGroup {
-            HistoryView()
-                .modelContainer(container)
-        }
-    }
-}
-```
-
-### Resume Previous Context
-
-```swift
-// Load the last 20 messages from the most recent conversation
+// Load previous context
 let previousMessages = try await agent.loadPreviousContext(limit: 20)
-
-// Append new user input and continue
-let messages = previousMessages + [.user("Continue from where we left off")]
-let response = try await agent.send(messages: messages)
-```
-
----
-
-## Function Calling (Tool Use)
-
-SwiftAIAgentCore supports the tool use API for both OpenAI and Anthropic. Define tools with a JSON Schema description, send them alongside messages, and handle the model's tool calls in your app:
-
-```swift
-// 1. Define a tool
-let weatherTool = AITool(
-    name: "get_weather",
-    description: "Returns the current weather for a city",
-    parameters: AIToolParameters(
-        properties: [
-            "city": AIToolProperty(type: "string", description: "City name"),
-            "unit": AIToolProperty(
-                type: "string",
-                description: "Temperature unit",
-                enumValues: ["celsius", "fahrenheit"]
-            )
-        ],
-        required: ["city"]
-    )
-)
-
-// 2. Send with tools — the model may request a tool call
-let result = try await agent.send(messages: conversation, tools: [weatherTool])
-
-// 3. Check if the model wants to call a tool
-if result.requiresToolExecution {
-    for toolCall in result.toolCalls {
-        let args = toolCall.decodeArguments() // [String: Any]?
-        // Execute the tool in your app, then send the result back
-        let toolResult = AIToolResult(toolCallId: toolCall.id, content: "22°C, sunny")
-        let finalResponse = try await agent.send(messages: conversation, toolResults: [toolResult])
-        print(finalResponse.message.content)
-    }
-}
 ```
 
 ---
@@ -275,23 +380,15 @@ public protocol AIAgent: Sendable {
     func estimateTokens(for messages: [AIMessage]) -> Int
     func send(messages: [AIMessage], tools: [AITool]) async throws -> AIMessageWithTools
     func send(messages: [AIMessage], toolResults: [AIToolResult]) async throws -> AIMessageWithTools
+
+    // Agentic loop
+    func run(messages: [AIMessage], tools: [AITool],
+             executor: @Sendable (AIToolCall) async throws -> String,
+             maxSteps: Int) async throws -> AIMessage
+
+    // Structured outputs
+    func send<T: Decodable & Sendable>(messages: [AIMessage], as type: T.Type) async throws -> T
 }
-```
-
-Default implementations are provided for `send(message:)`, `stream(message:)`, `estimateTokens(for:)`, and both tool-related methods.
-
-### `AIConfiguration`
-
-```swift
-let config = AIConfiguration(
-    model: .gpt4Turbo,
-    apiKey: "your-api-key",
-    temperature: 0.7,          // 0.0–2.0
-    maxResponseTokens: 2000,
-    timeout: 30,
-    retryPolicy: .default
-)
-let agent = try AIAgentImplementation(configuration: config)
 ```
 
 ### Convenience Initializers
@@ -302,12 +399,34 @@ AIAgentImplementation.gpt4(apiKey:)
 AIAgentImplementation.gpt4Turbo(apiKey:)
 AIAgentImplementation.gpt4o(apiKey:)
 AIAgentImplementation.gpt4oMini(apiKey:)
+AIAgentImplementation.gpt41(apiKey:)
+AIAgentImplementation.gpt41Mini(apiKey:)
 
-// Anthropic
-AIAgentImplementation.claude3Opus(apiKey:)
+// Anthropic — Claude 3
+AIAgentImplementation.claude3Haiku(apiKey:)
 AIAgentImplementation.claude3Sonnet(apiKey:)
+AIAgentImplementation.claude3Opus(apiKey:)
+
+// Anthropic — Claude 3.5 / 3.7
+AIAgentImplementation.claude35Haiku(apiKey:)
 AIAgentImplementation.claude35Sonnet(apiKey:)
+AIAgentImplementation.claude37Sonnet(apiKey:)
+
+// Anthropic — Claude 4
+AIAgentImplementation.claudeHaiku45(apiKey:)
 AIAgentImplementation.claudeSonnet46(apiKey:)
+AIAgentImplementation.claudeOpus46(apiKey:)
+
+// Google Gemini
+AIAgentImplementation.gemini20Flash(apiKey:)
+AIAgentImplementation.gemini20FlashLite(apiKey:)
+AIAgentImplementation.gemini15Pro(apiKey:)
+AIAgentImplementation.gemini15Flash(apiKey:)
+
+// Ollama (local)
+AIAgentImplementation.ollamaLlama32()
+AIAgentImplementation.ollamaMistral()
+AIAgentImplementation.ollamaCustom(name:maxTokens:)
 ```
 
 ### Retry Policies
@@ -321,19 +440,6 @@ RetryPolicy.aggressive   // 5 retries, shorter delays (0.5s → 30s)
 RetryPolicy(maxRetries: 3, initialDelay: 1.0, maxDelay: 60.0, multiplier: 2.0)
 ```
 
-### Token Management
-
-```swift
-// Estimate token count for a message array
-let tokens = TokenEstimator.estimate(messages: messages)
-
-// Validate against model limits (throws AIError.tokenLimitExceeded if over limit)
-try TokenEstimator.validate(messages: messages, model: .gpt4, maxResponseTokens: 1000)
-
-// Truncate to fit within a limit, preserving system messages
-let truncated = TokenEstimator.truncate(messages: messages, limit: 2000, keepSystemMessages: true)
-```
-
 ### Error Handling
 
 ```swift
@@ -341,29 +447,20 @@ do {
     let response = try await agent.send(message: "Hello")
 } catch let error as AIError {
     switch error {
-    case .invalidAPIKey:
-        // Invalid or missing API key
-    case .rateLimit(let retryAfter):
-        // Rate limited — retryAfter is TimeInterval? (seconds to wait)
-    case .tokenLimitExceeded(let current, let max):
-        // current and max are Int (token counts)
-    case .networkError(let underlying):
-        // Underlying URLSession or transport error
-    case .timeout:
-        // Request exceeded the configured timeout
-    case .invalidResponse(let statusCode, let message):
-        // Non-2xx HTTP response
-    case .streamingError(let reason):
-        // Error during streaming (including model not supporting streaming)
-    case .cancelled:
-        // Task was cancelled
-    case .decodingError, .invalidContext, .unknown:
-        break
+    case .invalidAPIKey:            break
+    case .rateLimit(let retryAfter): break
+    case .tokenLimitExceeded(let current, let max): break
+    case .networkError(let underlying): break
+    case .timeout:                  break
+    case .invalidResponse(let statusCode, let message): break
+    case .streamingError(let reason): break
+    case .agentLoopExceeded(let steps): break  // maxSteps reached in run()
+    case .cancelled:                break
+    case .decodingError, .invalidContext, .unknown: break
     }
 
     if error.isRecoverable {
-        // rateLimit, networkError, and timeout are recoverable
-        // Retry is handled automatically by the configured RetryPolicy
+        // rateLimit, networkError, and timeout are retried automatically
     }
 }
 ```
@@ -375,19 +472,21 @@ do {
 ```
 Sources/SwiftAIAgentCore/
 ├── Core/
-│   ├── AIAgentProtocol.swift       — AIAgent protocol
-│   ├── AIMessage.swift             — Message model (user / assistant / system)
+│   ├── AIAgentProtocol.swift       — AIAgent protocol + agentic loop + structured outputs
+│   ├── AIMessage.swift             — Message model (user / assistant / system / tool)
+│   ├── AIImageContent.swift        — Image attachment (.url / .data) for vision
 │   ├── AIRole.swift                — Role enumeration
-│   ├── AIModel.swift               — Model configurations (GPT-4, Claude, etc.)
+│   ├── AIModel.swift               — Model configs (OpenAI, Anthropic, Gemini, Ollama)
 │   ├── AIConfiguration.swift       — Agent configuration and retry policies
 │   ├── AIError.swift               — Typed error enum
 │   ├── AITool.swift                — Tool (function) definition for tool use
 │   └── AIToolCall.swift            — Tool call / result / response types
 │
 ├── Network/
-│   ├── NetworkClient.swift         — Base HTTP client with retry logic
-│   ├── OpenAIClient.swift          — OpenAI Chat Completions API
-│   ├── AnthropicClient.swift       — Anthropic Messages API
+│   ├── NetworkClient.swift         — Base HTTP client with retry and SSE streaming
+│   ├── OpenAIClient.swift          — OpenAI Chat Completions (also used for Ollama)
+│   ├── AnthropicClient.swift       — Anthropic Messages API with prompt caching
+│   ├── GeminiClient.swift          — Google Gemini generateContent / streamGenerateContent
 │   └── AIAgentImplementation.swift — Concrete actor conforming to AIAgent
 │
 ├── Persistence/                    — iOS 17+ / macOS 14+ only
@@ -415,7 +514,7 @@ swift test
 
 ### Mocking
 
-`AIAgent` is a protocol — implement it to create test doubles. Because `AIAgentImplementation` is an `actor`, mocks must be `Sendable`. The protocol includes two tool-use methods; provide at least stub implementations:
+`AIAgent` is a protocol — implement it to create test doubles:
 
 ```swift
 struct MockAIAgent: AIAgent {
@@ -437,27 +536,13 @@ struct MockAIAgent: AIAgent {
     }
 
     func send(messages: [AIMessage], toolResults: [AIToolResult]) async throws -> AIMessageWithTools {
-        AIMessageWithTools(message: .assistant("Mocked tool result response"))
+        AIMessageWithTools(message: .assistant("Mocked result"))
+    }
+
+    func sendForJSON(messages: [AIMessage]) async throws -> AIMessage {
+        .assistant("{\"key\": \"value\"}")
     }
 }
-```
-
----
-
-## Examples
-
-The [Examples](Examples/) directory contains:
-
-- **BasicExample.swift** — single message, streaming, and multi-turn conversation
-- **AdvancedExample.swift** — token management, retry handling, production patterns
-- **ChatApp/** — a complete SwiftUI macOS chat application using the package
-
-Run the basic example:
-
-```bash
-cd Examples
-export OPENAI_API_KEY="your-key"
-swift BasicExample.swift
 ```
 
 ---
