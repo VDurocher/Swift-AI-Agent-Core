@@ -12,6 +12,8 @@ public enum AIError: LocalizedError, Sendable {
     case streamingError(String)
     case timeout
     case cancelled
+    /// The agentic ReAct loop reached maxSteps without producing a final text response
+    case agentLoopExceeded(steps: Int)
     case unknown(Error)
 
     public var errorDescription: String? {
@@ -40,6 +42,8 @@ public enum AIError: LocalizedError, Sendable {
             return "Request timed out"
         case .cancelled:
             return "Request was cancelled"
+        case .agentLoopExceeded(let steps):
+            return "Agent loop exceeded \(steps) steps without producing a final response."
         case .unknown(let error):
             return "Unknown error: \(error.localizedDescription)"
         }

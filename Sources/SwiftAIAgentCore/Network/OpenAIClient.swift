@@ -1,6 +1,6 @@
 import Foundation
 
-/// OpenAI API client implementation
+/// OpenAI API client — also used for Ollama (OpenAI-compatible endpoint)
 actor OpenAIClient: Sendable {
     private let networkClient: NetworkClient
     private let configuration: AIConfiguration
@@ -10,164 +10,41 @@ actor OpenAIClient: Sendable {
         self.networkClient = NetworkClient(retryPolicy: configuration.retryPolicy)
     }
 
-    // MARK: - Request/Response Models
-
-    private struct ChatCompletionRequest: Encodable {
-        let model: String
-        let messages: [Message]
-        let temperature: Double
-        let maxTokens: Int
-        let stream: Bool
-        /// Outils disponibles pour le function calling (optionnel)
-        let tools: [ToolDefinition]?
-
-        enum CodingKeys: String, CodingKey {
-            case model, messages, temperature, tools
-            case maxTokens = "max_tokens"
-            case stream
-        }
-
-        struct Message: Encodable {
-            let role: String
-            let content: String
-            /// Identifiant de l'appel d'outil auquel ce message répond (role "tool" uniquement)
-            let toolCallId: String?
-
-            enum CodingKeys: String, CodingKey {
-                case role, content
-                case toolCallId = "tool_call_id"
-            }
-
-            init(role: String, content: String, toolCallId: String? = nil) {
-                self.role = role
-                self.content = content
-                self.toolCallId = toolCallId
-            }
-        }
-
-        /// Définition d'un outil au format OpenAI function calling
-        struct ToolDefinition: Encodable {
-            /// Toujours "function" pour le format OpenAI
-            let type: String
-            let function: FunctionDefinition
-
-            struct FunctionDefinition: Encodable {
-                let name: String
-                let description: String
-                let parameters: AITool.AIToolParameters
-            }
-        }
-    }
-
-    private struct ChatCompletionResponse: Decodable {
-        let id: String
-        let choices: [Choice]
-
-        struct Choice: Decodable {
-            let message: Message
-            let finishReason: String?
-
-            enum CodingKeys: String, CodingKey {
-                case message
-                case finishReason = "finish_reason"
-            }
-        }
-
-        struct Message: Decodable {
-            let role: String
-            /// Contenu textuel — peut être nil si le modèle n'appelle que des outils
-            let content: String?
-            /// Appels d'outils demandés par le modèle (nil si réponse textuelle)
-            let toolCalls: [ToolCallResponse]?
-
-            enum CodingKeys: String, CodingKey {
-                case role, content
-                case toolCalls = "tool_calls"
-            }
-        }
-
-        /// Appel d'outil tel que retourné par l'API OpenAI
-        struct ToolCallResponse: Decodable {
-            let id: String
-            let function: FunctionCall
-
-            struct FunctionCall: Decodable {
-                let name: String
-                let arguments: String
-            }
-        }
-    }
-
-    private struct StreamChunk: Decodable {
-        let choices: [Choice]
-
-        struct Choice: Decodable {
-            let delta: Delta
-            let finishReason: String?
-
-            enum CodingKeys: String, CodingKey {
-                case delta
-                case finishReason = "finish_reason"
-            }
-        }
-
-        struct Delta: Decodable {
-            let content: String?
-        }
-    }
-
     // MARK: - Public Methods
 
     func sendCompletion(messages: [AIMessage]) async throws -> AIMessage {
-        let request = try createRequest(messages: messages, tools: nil, stream: false)
-        let (data, _) = try await networkClient.execute(request: request)
-
-        let response = try JSONDecoder().decode(ChatCompletionResponse.self, from: data)
-
-        guard let choice = response.choices.first else {
-            throw AIError.invalidResponse(statusCode: 200, message: "No choices in response")
-        }
-
-        return AIMessage(
-            role: AIRole(rawValue: choice.message.role) ?? .assistant,
-            content: choice.message.content ?? ""
-        )
+        try await sendInternal(messages: messages, tools: nil, stream: false, jsonMode: false)
     }
 
-    /// Envoie des messages avec des outils disponibles — le modèle peut retourner des appels d'outils
-    func sendCompletionWithTools(messages: [AIMessage], tools: [AITool]) async throws -> AIMessageWithTools {
-        let request = try createRequest(messages: messages, tools: tools, stream: false)
-        let (data, _) = try await networkClient.execute(request: request)
+    func sendCompletionJSON(messages: [AIMessage]) async throws -> AIMessage {
+        try await sendInternal(messages: messages, tools: nil, stream: false, jsonMode: true)
+    }
 
+    func sendCompletionWithTools(messages: [AIMessage], tools: [AITool]) async throws -> AIMessageWithTools {
+        let request = try buildRequest(messages: messages, tools: tools, stream: false, jsonMode: false)
+        let (data, _) = try await networkClient.execute(request: request)
         let response = try JSONDecoder().decode(ChatCompletionResponse.self, from: data)
 
         guard let choice = response.choices.first else {
             throw AIError.invalidResponse(statusCode: 200, message: "No choices in response")
         }
 
-        // Convertit les tool calls de la réponse OpenAI en AIToolCall
-        let toolCalls: [AIToolCall] = choice.message.toolCalls?.map { callResponse in
-            AIToolCall(
-                id: callResponse.id,
-                name: callResponse.function.name,
-                arguments: callResponse.function.arguments
-            )
+        let toolCalls: [AIToolCall] = choice.message.toolCalls?.map { call in
+            AIToolCall(id: call.id, name: call.function.name, arguments: call.function.arguments)
         } ?? []
 
-        let assistantMessage = AIMessage(
-            role: .assistant,
-            content: choice.message.content ?? ""
+        return AIMessageWithTools(
+            message: AIMessage(role: .assistant, content: choice.message.content ?? ""),
+            toolCalls: toolCalls
         )
-
-        return AIMessageWithTools(message: assistantMessage, toolCalls: toolCalls)
     }
 
     func streamCompletion(messages: [AIMessage]) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             Task {
                 do {
-                    let request = try createRequest(messages: messages, tools: nil, stream: true)
-                    let stream = networkClient.stream(request: request)
+                    let request = try self.buildRequest(messages: messages, tools: nil, stream: true, jsonMode: false)
+                    let stream = await self.networkClient.stream(request: request)
 
                     for try await data in stream {
                         let lines = String(data: data, encoding: .utf8)?
@@ -176,21 +53,16 @@ actor OpenAIClient: Sendable {
 
                         for line in lines {
                             guard line.hasPrefix("data: ") else { continue }
-                            let jsonString = String(line.dropFirst(6))
+                            let json = String(line.dropFirst(6))
+                            if json == "[DONE]" { continuation.finish(); return }
 
-                            if jsonString == "[DONE]" {
-                                continuation.finish()
-                                return
-                            }
-
-                            if let data = jsonString.data(using: .utf8),
-                               let chunk = try? JSONDecoder().decode(StreamChunk.self, from: data),
+                            if let chunkData = json.data(using: .utf8),
+                               let chunk = try? JSONDecoder().decode(StreamChunk.self, from: chunkData),
                                let content = chunk.choices.first?.delta.content {
                                 continuation.yield(content)
                             }
                         }
                     }
-
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
@@ -201,50 +73,227 @@ actor OpenAIClient: Sendable {
 
     // MARK: - Private Helpers
 
-    private func createRequest(messages: [AIMessage], tools: [AITool]?, stream: Bool) throws -> URLRequest {
+    private func sendInternal(messages: [AIMessage], tools: [AITool]?, stream: Bool, jsonMode: Bool) async throws -> AIMessage {
+        let request = try buildRequest(messages: messages, tools: tools, stream: stream, jsonMode: jsonMode)
+        let (data, _) = try await networkClient.execute(request: request)
+        let response = try JSONDecoder().decode(ChatCompletionResponse.self, from: data)
+
+        guard let choice = response.choices.first else {
+            throw AIError.invalidResponse(statusCode: 200, message: "No choices in response")
+        }
+        return AIMessage(
+            role: AIRole(rawValue: choice.message.role) ?? .assistant,
+            content: choice.message.content ?? ""
+        )
+    }
+
+    private func buildRequest(messages: [AIMessage], tools: [AITool]?, stream: Bool, jsonMode: Bool) throws -> URLRequest {
         try configuration.validate()
 
-        let url = URL(string: "\(configuration.model.provider.baseURL)/chat/completions")!
+        let rawURL = "\(configuration.model.provider.baseURL)/chat/completions"
+        guard let url = URL(string: rawURL) else {
+            throw AIError.invalidContext("Invalid endpoint URL: \(rawURL)")
+        }
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = configuration.timeout
 
-        // Convertit les messages en format OpenAI, en gérant le role "tool" pour les résultats
-        let openAIMessages = messages.map { message -> ChatCompletionRequest.Message in
-            let toolCallId = message.role == .tool ? message.metadata?["tool_call_id"] : nil
-            return ChatCompletionRequest.Message(
-                role: message.role.openAIName,
-                content: message.content,
-                toolCallId: toolCallId
-            )
-        }
+        let encodedMessages = messages.map { encodeMessage($0) }
+        let toolDefs = tools.map { $0.map { ToolDefinition(from: $0) } }
+        let format = jsonMode ? ResponseFormat(type: "json_object") : nil
 
-        // Convertit les AITool en ToolDefinition OpenAI si présents
-        let toolDefinitions = tools.map { toolArray in
-            toolArray.map { tool in
-                ChatCompletionRequest.ToolDefinition(
-                    type: "function",
-                    function: .init(
-                        name: tool.name,
-                        description: tool.description,
-                        parameters: tool.parameters
-                    )
-                )
-            }
-        }
-
-        let requestBody = ChatCompletionRequest(
+        let body = ChatCompletionRequest(
             model: configuration.model.name,
-            messages: openAIMessages,
+            messages: encodedMessages,
             temperature: configuration.temperature,
             maxTokens: configuration.maxResponseTokens,
             stream: stream,
-            tools: toolDefinitions
+            tools: toolDefs,
+            responseFormat: format
         )
 
-        request.httpBody = try JSONEncoder().encode(requestBody)
+        request.httpBody = try JSONEncoder().encode(body)
         return request
+    }
+
+    /// Converts an AIMessage into the OpenAI wire format, handling vision and tool_calls
+    private func encodeMessage(_ message: AIMessage) -> OutboundMessage {
+        // Assistant messages with tool calls need the tool_calls field
+        if message.role == .assistant, let calls = message.toolCalls, !calls.isEmpty {
+            let outCalls = calls.map { call in
+                ToolCallOutbound(id: call.id, function: .init(name: call.name, arguments: call.arguments))
+            }
+            return OutboundMessage(role: message.role.openAIName, stringContent: message.content, toolCallId: nil, toolCalls: outCalls, parts: nil)
+        }
+
+        // Tool result messages need tool_call_id
+        if message.role == .tool, let callId = message.metadata?["tool_call_id"] {
+            return OutboundMessage(role: "tool", stringContent: message.content, toolCallId: callId, toolCalls: nil, parts: nil)
+        }
+
+        // Messages with images use the parts array format
+        if let images = message.images, !images.isEmpty {
+            var parts: [ContentPart] = [.text(message.content)]
+            for image in images {
+                switch image {
+                case .url(let url):
+                    parts.append(.imageURL(url.absoluteString))
+                case .data(let bytes, let mime):
+                    parts.append(.imageURL("data:\(mime);base64,\(bytes.base64EncodedString())"))
+                }
+            }
+            return OutboundMessage(role: message.role.openAIName, stringContent: nil, toolCallId: nil, toolCalls: nil, parts: parts)
+        }
+
+        return OutboundMessage(role: message.role.openAIName, stringContent: message.content, toolCallId: nil, toolCalls: nil, parts: nil)
+    }
+}
+
+// MARK: - Request / Response Models
+
+private struct ChatCompletionRequest: Encodable {
+    let model: String
+    let messages: [OutboundMessage]
+    let temperature: Double
+    let maxTokens: Int
+    let stream: Bool
+    let tools: [ToolDefinition]?
+    let responseFormat: ResponseFormat?
+
+    enum CodingKeys: String, CodingKey {
+        case model, messages, temperature, stream, tools
+        case maxTokens = "max_tokens"
+        case responseFormat = "response_format"
+    }
+}
+
+private struct ResponseFormat: Encodable {
+    let type: String
+}
+
+/// OpenAI message with polymorphic content (string or parts array)
+private struct OutboundMessage: Encodable {
+    let role: String
+    let stringContent: String?
+    let toolCallId: String?
+    let toolCalls: [ToolCallOutbound]?
+    let parts: [ContentPart]?
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: Keys.self)
+        try c.encode(role, forKey: .role)
+        if let calls = toolCalls, !calls.isEmpty {
+            try c.encode(stringContent ?? "", forKey: .content)
+            try c.encode(calls, forKey: .toolCalls)
+        } else if let parts {
+            try c.encode(parts, forKey: .content)
+        } else {
+            try c.encode(stringContent ?? "", forKey: .content)
+        }
+        if let id = toolCallId { try c.encode(id, forKey: .toolCallId) }
+    }
+
+    enum Keys: String, CodingKey {
+        case role, content
+        case toolCallId = "tool_call_id"
+        case toolCalls = "tool_calls"
+    }
+}
+
+private enum ContentPart: Encodable {
+    case text(String)
+    case imageURL(String)
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: PartKeys.self)
+        switch self {
+        case .text(let t):
+            try c.encode("text", forKey: .type)
+            try c.encode(t, forKey: .text)
+        case .imageURL(let url):
+            try c.encode("image_url", forKey: .type)
+            try c.encode(["url": url], forKey: .imageURL)
+        }
+    }
+
+    enum PartKeys: String, CodingKey {
+        case type, text
+        case imageURL = "image_url"
+    }
+}
+
+private struct ToolCallOutbound: Encodable {
+    let id: String
+    let type = "function"
+    let function: FunctionRef
+
+    struct FunctionRef: Encodable {
+        let name: String
+        let arguments: String
+    }
+}
+
+private struct ToolDefinition: Encodable {
+    let type = "function"
+    let function: FunctionDef
+
+    struct FunctionDef: Encodable {
+        let name: String
+        let description: String
+        let parameters: AITool.AIToolParameters
+    }
+
+    init(from tool: AITool) {
+        self.function = FunctionDef(name: tool.name, description: tool.description, parameters: tool.parameters)
+    }
+}
+
+private struct ChatCompletionResponse: Decodable {
+    let choices: [Choice]
+
+    struct Choice: Decodable {
+        let message: Message
+        let finishReason: String?
+
+        enum CodingKeys: String, CodingKey {
+            case message
+            case finishReason = "finish_reason"
+        }
+    }
+
+    struct Message: Decodable {
+        let role: String
+        let content: String?
+        let toolCalls: [ToolCallResponse]?
+
+        enum CodingKeys: String, CodingKey {
+            case role, content
+            case toolCalls = "tool_calls"
+        }
+    }
+
+    struct ToolCallResponse: Decodable {
+        let id: String
+        let function: FunctionCall
+
+        struct FunctionCall: Decodable {
+            let name: String
+            let arguments: String
+        }
+    }
+}
+
+private struct StreamChunk: Decodable {
+    let choices: [Choice]
+
+    struct Choice: Decodable {
+        let delta: Delta
+
+        struct Delta: Decodable {
+            let content: String?
+        }
     }
 }

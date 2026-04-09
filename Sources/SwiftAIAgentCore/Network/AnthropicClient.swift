@@ -10,254 +10,55 @@ actor AnthropicClient: Sendable {
         self.networkClient = NetworkClient(retryPolicy: configuration.retryPolicy)
     }
 
-    // MARK: - Request/Response Models
-
-    private struct MessagesRequest: Encodable {
-        let model: String
-        let messages: [Message]
-        let maxTokens: Int
-        let temperature: Double
-        let system: String?
-        let stream: Bool
-        /// Outils disponibles au format Anthropic (optionnel)
-        let tools: [ToolDefinition]?
-
-        enum CodingKeys: String, CodingKey {
-            case model, messages, temperature, system, stream, tools
-            case maxTokens = "max_tokens"
-        }
-
-        struct Message: Encodable {
-            let role: String
-            /// Contenu du message — texte ou blocs tool_result selon le rôle
-            let content: MessageContent
-
-            /// Encodage polymorphique : texte simple ou tableau de blocs
-            func encode(to encoder: Encoder) throws {
-                var container = encoder.container(keyedBy: MessageCodingKeys.self)
-                try container.encode(role, forKey: .role)
-                switch content {
-                case .text(let text):
-                    try container.encode(text, forKey: .content)
-                case .toolResults(let blocks):
-                    try container.encode(blocks, forKey: .content)
-                }
-            }
-
-            enum MessageCodingKeys: String, CodingKey {
-                case role, content
-            }
-        }
-
-        /// Contenu d'un message : texte pur ou blocs de résultats d'outils
-        enum MessageContent {
-            case text(String)
-            case toolResults([ToolResultBlock])
-        }
-
-        /// Bloc de résultat d'outil au format Anthropic
-        struct ToolResultBlock: Encodable {
-            /// Toujours "tool_result" pour le format Anthropic
-            let type: String
-            let toolUseId: String
-            let content: String
-
-            enum CodingKeys: String, CodingKey {
-                case type, content
-                case toolUseId = "tool_use_id"
-            }
-
-            init(toolUseId: String, content: String) {
-                self.type = "tool_result"
-                self.toolUseId = toolUseId
-                self.content = content
-            }
-        }
-
-        /// Définition d'un outil au format Anthropic
-        struct ToolDefinition: Encodable {
-            let name: String
-            let description: String
-            /// Schéma des paramètres au format JSON Schema (clé: "input_schema")
-            let inputSchema: AITool.AIToolParameters
-
-            enum CodingKeys: String, CodingKey {
-                case name, description
-                case inputSchema = "input_schema"
-            }
-        }
-    }
-
-    private struct MessagesResponse: Decodable {
-        let id: String
-        let content: [Content]
-        let stopReason: String?
-
-        enum CodingKeys: String, CodingKey {
-            case id, content
-            case stopReason = "stop_reason"
-        }
-
-        /// Bloc de contenu — peut être un texte ou un appel d'outil
-        struct Content: Decodable {
-            let type: String
-            let text: String?
-            /// Identifiant de l'appel d'outil (type "tool_use")
-            let id: String?
-            /// Nom de l'outil à appeler (type "tool_use")
-            let name: String?
-            /// Arguments de l'outil sous forme de dictionnaire brut
-            let input: AnthropicInput?
-        }
-
-        /// Représentation intermédiaire pour les arguments d'outil (JSON dynamique)
-        struct AnthropicInput: Decodable {
-            let raw: [String: AnthropicValue]
-
-            init(from decoder: Decoder) throws {
-                let container = try decoder.singleValueContainer()
-                raw = try container.decode([String: AnthropicValue].self)
-            }
-
-            /// Sérialise les arguments en JSON String pour AIToolCall
-            func toJSONString() -> String {
-                let dict = raw.mapValues { $0.toAny() }
-                guard let data = try? JSONSerialization.data(withJSONObject: dict),
-                      let string = String(data: data, encoding: .utf8) else {
-                    return "{}"
-                }
-                return string
-            }
-        }
-
-        /// Valeur JSON générique pour désérialiser les inputs d'outils Anthropic
-        enum AnthropicValue: Decodable {
-            case string(String)
-            case int(Int)
-            case double(Double)
-            case bool(Bool)
-            case null
-
-            init(from decoder: Decoder) throws {
-                let container = try decoder.singleValueContainer()
-                if let value = try? container.decode(String.self) {
-                    self = .string(value)
-                } else if let value = try? container.decode(Int.self) {
-                    self = .int(value)
-                } else if let value = try? container.decode(Double.self) {
-                    self = .double(value)
-                } else if let value = try? container.decode(Bool.self) {
-                    self = .bool(value)
-                } else {
-                    self = .null
-                }
-            }
-
-            func toAny() -> Any {
-                switch self {
-                case .string(let value): return value
-                case .int(let value): return value
-                case .double(let value): return value
-                case .bool(let value): return value
-                case .null: return NSNull()
-                }
-            }
-        }
-    }
-
-    private struct StreamEvent: Decodable {
-        let type: String
-        let delta: Delta?
-        let contentBlock: ContentBlock?
-
-        enum CodingKeys: String, CodingKey {
-            case type, delta
-            case contentBlock = "content_block"
-        }
-
-        struct Delta: Decodable {
-            let text: String?
-        }
-
-        struct ContentBlock: Decodable {
-            let text: String?
-        }
-    }
-
     // MARK: - Public Methods
 
     func sendCompletion(messages: [AIMessage]) async throws -> AIMessage {
-        let request = try createRequest(messages: messages, tools: nil, stream: false)
+        let request = try buildRequest(messages: messages, tools: nil, stream: false)
         let (data, _) = try await networkClient.execute(request: request)
-
-        let response = try JSONDecoder().decode(MessagesResponse.self, from: data)
-
-        // Extrait le premier bloc texte disponible
-        guard let textContent = response.content.first(where: { $0.type == "text" })?.text else {
-            throw AIError.invalidResponse(statusCode: 200, message: "No content in response")
-        }
-
-        return AIMessage(role: .assistant, content: textContent)
+        return try decodeTextResponse(from: data)
     }
 
-    /// Envoie des messages avec des outils disponibles — le modèle peut retourner des appels d'outils
     func sendCompletionWithTools(messages: [AIMessage], tools: [AITool]) async throws -> AIMessageWithTools {
-        let request = try createRequest(messages: messages, tools: tools, stream: false)
+        let request = try buildRequest(messages: messages, tools: tools, stream: false)
         let (data, _) = try await networkClient.execute(request: request)
 
         let response = try JSONDecoder().decode(MessagesResponse.self, from: data)
+        let text = response.content.first(where: { $0.type == "text" })?.text ?? ""
 
-        // Extrait le contenu textuel (peut être absent si le modèle n'appelle que des outils)
-        let textContent = response.content.first(where: { $0.type == "text" })?.text ?? ""
-
-        // Extrait les appels d'outils des blocs "tool_use"
         let toolCalls: [AIToolCall] = response.content.compactMap { block in
-            guard block.type == "tool_use",
-                  let callId = block.id,
-                  let toolName = block.name else { return nil }
-            let arguments = block.input?.toJSONString() ?? "{}"
-            return AIToolCall(id: callId, name: toolName, arguments: arguments)
+            guard block.type == "tool_use", let id = block.id, let name = block.name else { return nil }
+            return AIToolCall(id: id, name: name, arguments: block.input?.toJSONString() ?? "{}")
         }
 
-        let assistantMessage = AIMessage(role: .assistant, content: textContent)
-        return AIMessageWithTools(message: assistantMessage, toolCalls: toolCalls)
+        return AIMessageWithTools(message: AIMessage(role: .assistant, content: text), toolCalls: toolCalls)
     }
 
     func streamCompletion(messages: [AIMessage]) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             Task {
                 do {
-                    let request = try createRequest(messages: messages, tools: nil, stream: true)
-                    let stream = networkClient.stream(request: request)
+                    let request = try self.buildRequest(messages: messages, tools: nil, stream: true)
+                    let stream = await self.networkClient.stream(request: request)
 
                     for try await data in stream {
                         let lines = String(data: data, encoding: .utf8)?
-                            .components(separatedBy: "\n")
-                            .filter { !$0.isEmpty } ?? []
-
+                            .components(separatedBy: "\n").filter { !$0.isEmpty } ?? []
                         for line in lines {
                             guard line.hasPrefix("data: ") else { continue }
-                            let jsonString = String(line.dropFirst(6))
+                            let json = String(line.dropFirst(6))
+                            guard let eventData = json.data(using: .utf8),
+                                  let event = try? JSONDecoder().decode(StreamEvent.self, from: eventData) else { continue }
 
-                            if let data = jsonString.data(using: .utf8),
-                               let event = try? JSONDecoder().decode(StreamEvent.self, from: data) {
-
-                                // Traite les différents types d'événements du stream Anthropic
-                                switch event.type {
-                                case "content_block_delta":
-                                    if let text = event.delta?.text {
-                                        continuation.yield(text)
-                                    }
-                                case "message_stop":
-                                    continuation.finish()
-                                    return
-                                default:
-                                    break
-                                }
+                            switch event.type {
+                            case "content_block_delta":
+                                if let text = event.delta?.text { continuation.yield(text) }
+                            case "message_stop":
+                                continuation.finish(); return
+                            default:
+                                break
                             }
                         }
                     }
-
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
@@ -268,10 +69,22 @@ actor AnthropicClient: Sendable {
 
     // MARK: - Private Helpers
 
-    private func createRequest(messages: [AIMessage], tools: [AITool]?, stream: Bool) throws -> URLRequest {
+    private func decodeTextResponse(from data: Data) throws -> AIMessage {
+        let response = try JSONDecoder().decode(MessagesResponse.self, from: data)
+        guard let text = response.content.first(where: { $0.type == "text" })?.text else {
+            throw AIError.invalidResponse(statusCode: 200, message: "No content in response")
+        }
+        return AIMessage(role: .assistant, content: text)
+    }
+
+    private func buildRequest(messages: [AIMessage], tools: [AITool]?, stream: Bool) throws -> URLRequest {
         try configuration.validate()
 
-        let url = URL(string: "\(configuration.model.provider.baseURL)/messages")!
+        let rawURL = "\(configuration.model.provider.baseURL)/messages"
+        guard let url = URL(string: rawURL) else {
+            throw AIError.invalidContext("Invalid Anthropic endpoint URL: \(rawURL)")
+        }
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -279,51 +92,318 @@ actor AnthropicClient: Sendable {
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
         request.timeoutInterval = configuration.timeout
 
-        // Extrait le message système (géré séparément par l'API Anthropic)
-        let systemMessage = messages.first(where: { $0.role == .system })?.content
+        // Feature 5: Add prompt caching beta header when any message opts in
+        let usesCaching = messages.contains { $0.cacheControl }
+        if usesCaching {
+            request.setValue("prompt-caching-2024-07-31", forHTTPHeaderField: "anthropic-beta")
+        }
+
+        let systemMessages = messages.filter { $0.role == .system }
         let conversationMessages = messages.filter { $0.role != .system }
 
-        // Convertit les messages en format Anthropic, en gérant les tool results
-        let anthropicMessages = conversationMessages.map { message -> MessagesRequest.Message in
-            if message.role == .tool, let toolCallId = message.metadata?["tool_call_id"] {
-                // Les résultats d'outils utilisent un contenu structuré en blocs
-                let block = MessagesRequest.ToolResultBlock(
-                    toolUseId: toolCallId,
-                    content: message.content
-                )
-                return MessagesRequest.Message(
-                    role: "user",
-                    content: .toolResults([block])
-                )
+        // Build system content — supports caching on individual system messages
+        let systemContent: SystemContent? = systemMessages.isEmpty ? nil : {
+            if systemMessages.allSatisfy({ !$0.cacheControl }) {
+                // Simple string format when no caching needed
+                return .text(systemMessages.map { $0.content }.joined(separator: "\n"))
             }
-            return MessagesRequest.Message(
-                role: message.role.anthropicName,
-                content: .text(message.content)
-            )
-        }
-
-        // Convertit les AITool en ToolDefinition Anthropic si présents
-        let toolDefinitions = tools.map { toolArray in
-            toolArray.map { tool in
-                MessagesRequest.ToolDefinition(
-                    name: tool.name,
-                    description: tool.description,
-                    inputSchema: tool.parameters
-                )
+            // Block format required for cache_control
+            let blocks = systemMessages.map { msg in
+                SystemBlock(text: msg.content, cached: msg.cacheControl)
             }
-        }
+            return .blocks(blocks)
+        }()
 
-        let requestBody = MessagesRequest(
+        let anthropicMessages = conversationMessages.map { encodeMessage($0) }
+
+        let toolDefs = tools.map { $0.map { ToolDefinition(from: $0) } }
+
+        let body = MessagesRequest(
             model: configuration.model.name,
             messages: anthropicMessages,
             maxTokens: configuration.maxResponseTokens,
             temperature: configuration.temperature,
-            system: systemMessage,
+            system: systemContent,
             stream: stream,
-            tools: toolDefinitions
+            tools: toolDefs
         )
 
-        request.httpBody = try JSONEncoder().encode(requestBody)
+        request.httpBody = try JSONEncoder().encode(body)
         return request
+    }
+
+    /// Converts an AIMessage into the Anthropic wire format
+    private func encodeMessage(_ message: AIMessage) -> OutboundMessage {
+        // Tool result messages become user messages with tool_result blocks
+        if message.role == .tool, let callId = message.metadata?["tool_call_id"] {
+            return OutboundMessage(role: "user", blocks: [.toolResult(id: callId, content: message.content)])
+        }
+
+        // Assistant messages with tool calls become mixed content blocks
+        if message.role == .assistant, let calls = message.toolCalls, !calls.isEmpty {
+            var blocks: [ContentBlock] = []
+            if !message.content.isEmpty {
+                blocks.append(.text(message.content, cached: false))
+            }
+            for call in calls {
+                let input = call.decodeArguments().map { dict in
+                    dict.mapValues { AnthropicScalar.from($0) }
+                } ?? [:]
+                blocks.append(.toolUse(id: call.id, name: call.name, input: input))
+            }
+            return OutboundMessage(role: "assistant", blocks: blocks)
+        }
+
+        // Messages with images use block content
+        if let images = message.images, !images.isEmpty {
+            var blocks: [ContentBlock] = []
+            for image in images {
+                blocks.append(.image(image, cached: message.cacheControl))
+            }
+            blocks.append(.text(message.content, cached: message.cacheControl))
+            return OutboundMessage(role: message.role.anthropicName, blocks: blocks)
+        }
+
+        // Simple text message (possibly cached)
+        if message.cacheControl {
+            return OutboundMessage(role: message.role.anthropicName, blocks: [.text(message.content, cached: true)])
+        }
+
+        return OutboundMessage(role: message.role.anthropicName, text: message.content)
+    }
+}
+
+// MARK: - Request Models
+
+private struct MessagesRequest: Encodable {
+    let model: String
+    let messages: [OutboundMessage]
+    let maxTokens: Int
+    let temperature: Double
+    let system: SystemContent?
+    let stream: Bool
+    let tools: [ToolDefinition]?
+
+    enum CodingKeys: String, CodingKey {
+        case model, messages, temperature, system, stream, tools
+        case maxTokens = "max_tokens"
+    }
+}
+
+private enum SystemContent: Encodable {
+    case text(String)
+    case blocks([SystemBlock])
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .text(let t): try container.encode(t)
+        case .blocks(let blocks): try container.encode(blocks)
+        }
+    }
+}
+
+private struct SystemBlock: Encodable {
+    let type = "text"
+    let text: String
+    let cacheControl: CacheControl?
+
+    init(text: String, cached: Bool) {
+        self.text = text
+        self.cacheControl = cached ? CacheControl() : nil
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case type, text
+        case cacheControl = "cache_control"
+    }
+}
+
+private struct CacheControl: Encodable {
+    let type = "ephemeral"
+}
+
+/// Anthropic message with polymorphic content (string or blocks array)
+private struct OutboundMessage: Encodable {
+    let role: String
+    private let textContent: String?
+    private let blocks: [ContentBlock]?
+
+    init(role: String, text: String) {
+        self.role = role
+        self.textContent = text
+        self.blocks = nil
+    }
+
+    init(role: String, blocks: [ContentBlock]) {
+        self.role = role
+        self.textContent = nil
+        self.blocks = blocks
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: Keys.self)
+        try c.encode(role, forKey: .role)
+        if let blocks {
+            try c.encode(blocks, forKey: .content)
+        } else {
+            try c.encode(textContent ?? "", forKey: .content)
+        }
+    }
+
+    enum Keys: String, CodingKey { case role, content }
+}
+
+private enum ContentBlock: Encodable {
+    case text(String, cached: Bool)
+    case image(AIImageContent, cached: Bool)
+    case toolResult(id: String, content: String)
+    case toolUse(id: String, name: String, input: [String: AnthropicScalar])
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: BlockKeys.self)
+        switch self {
+        case .text(let text, let cached):
+            try c.encode("text", forKey: .type)
+            try c.encode(text, forKey: .text)
+            if cached { try c.encode(CacheControl(), forKey: .cacheControl) }
+
+        case .image(let img, let cached):
+            try c.encode("image", forKey: .type)
+            switch img {
+            case .url(let url):
+                try c.encode(["type": "url", "url": url.absoluteString], forKey: .source)
+            case .data(let bytes, let mime):
+                try c.encode(["type": "base64", "media_type": mime, "data": bytes.base64EncodedString()], forKey: .source)
+            }
+            if cached { try c.encode(CacheControl(), forKey: .cacheControl) }
+
+        case .toolResult(let id, let content):
+            try c.encode("tool_result", forKey: .type)
+            try c.encode(id, forKey: .toolUseId)
+            try c.encode(content, forKey: .content)
+
+        case .toolUse(let id, let name, let input):
+            try c.encode("tool_use", forKey: .type)
+            try c.encode(id, forKey: .id)
+            try c.encode(name, forKey: .name)
+            try c.encode(input, forKey: .input)
+        }
+    }
+
+    enum BlockKeys: String, CodingKey {
+        case type, text, source, content, id, name, input
+        case cacheControl = "cache_control"
+        case toolUseId = "tool_use_id"
+    }
+}
+
+/// Scalar JSON value used for tool_use input encoding
+enum AnthropicScalar: Codable, Sendable {
+    case string(String)
+    case int(Int)
+    case double(Double)
+    case bool(Bool)
+    case null
+
+    static func from(_ any: Any) -> AnthropicScalar {
+        switch any {
+        case let v as String: return .string(v)
+        case let v as Bool: return .bool(v)   // must precede Int/Double — NSNumber ambiguity
+        case let v as Int: return .int(v)
+        case let v as Double: return .double(v)
+        default: return .null
+        }
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if let v = try? c.decode(String.self) { self = .string(v) }
+        else if let v = try? c.decode(Int.self) { self = .int(v) }
+        else if let v = try? c.decode(Double.self) { self = .double(v) }
+        else if let v = try? c.decode(Bool.self) { self = .bool(v) }
+        else { self = .null }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.singleValueContainer()
+        switch self {
+        case .string(let v): try c.encode(v)
+        case .int(let v): try c.encode(v)
+        case .double(let v): try c.encode(v)
+        case .bool(let v): try c.encode(v)
+        case .null: try c.encodeNil()
+        }
+    }
+}
+
+private struct ToolDefinition: Encodable {
+    let name: String
+    let description: String
+    let inputSchema: AITool.AIToolParameters
+
+    enum CodingKeys: String, CodingKey {
+        case name, description
+        case inputSchema = "input_schema"
+    }
+
+    init(from tool: AITool) {
+        self.name = tool.name
+        self.description = tool.description
+        self.inputSchema = tool.parameters
+    }
+}
+
+// MARK: - Response Models
+
+private struct MessagesResponse: Decodable {
+    let content: [ContentBlock]
+    let stopReason: String?
+
+    enum CodingKeys: String, CodingKey {
+        case content
+        case stopReason = "stop_reason"
+    }
+
+    struct ContentBlock: Decodable {
+        let type: String
+        let text: String?
+        let id: String?
+        let name: String?
+        let input: AnthropicInput?
+    }
+
+    struct AnthropicInput: Decodable {
+        let raw: [String: AnthropicScalar]
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.singleValueContainer()
+            raw = try c.decode([String: AnthropicScalar].self)
+        }
+
+        func toJSONString() -> String {
+            var dict: [String: Any] = [:]
+            for (key, value) in raw {
+                switch value {
+                case .string(let v): dict[key] = v
+                case .int(let v): dict[key] = v
+                case .double(let v): dict[key] = v
+                case .bool(let v): dict[key] = v
+                case .null: dict[key] = NSNull()
+                }
+            }
+            guard let data = try? JSONSerialization.data(withJSONObject: dict),
+                  let str = String(data: data, encoding: .utf8) else { return "{}" }
+            return str
+        }
+    }
+}
+
+private struct StreamEvent: Decodable {
+    let type: String
+    let delta: Delta?
+
+    struct Delta: Decodable {
+        let text: String?
     }
 }

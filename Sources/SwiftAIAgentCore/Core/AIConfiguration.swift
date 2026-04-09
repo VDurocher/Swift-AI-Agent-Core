@@ -27,7 +27,9 @@ public struct AIConfiguration: Sendable {
 
     /// Validate configuration
     public func validate() throws {
-        guard !apiKey.isEmpty else {
+        // Ollama runs locally without authentication
+        let requiresKey = model.provider != .ollama
+        guard !apiKey.isEmpty || !requiresKey else {
             throw AIError.invalidAPIKey
         }
 

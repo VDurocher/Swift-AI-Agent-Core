@@ -1,12 +1,12 @@
 import Foundation
 
-/// Appel d'outil demandé par le modèle dans une réponse
+/// Tool call requested by the model in a response
 public struct AIToolCall: Sendable, Codable, Hashable {
-    /// Identifiant unique de l'appel (ex: "call_abc123"), nécessaire pour apparier le résultat
+    /// Unique call identifier (e.g. "call_abc123"), required to match the result
     public let id: String
-    /// Nom de l'outil à appeler
+    /// Name of the tool to call
     public let name: String
-    /// Arguments de l'outil encodés en JSON String
+    /// Tool arguments encoded as a JSON String
     public let arguments: String
 
     public init(id: String, name: String, arguments: String) {
@@ -15,19 +15,19 @@ public struct AIToolCall: Sendable, Codable, Hashable {
         self.arguments = arguments
     }
 
-    /// Tente de décoder les arguments en dictionnaire clé/valeur
-    /// Retourne nil si le JSON est invalide ou ne correspond pas à un objet
+    /// Attempts to decode arguments into a key/value dictionary
+    /// Returns nil if the JSON is invalid or does not represent an object
     public func decodeArguments() -> [String: Any]? {
         guard let data = arguments.data(using: .utf8) else { return nil }
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
     }
 }
 
-/// Résultat d'un appel d'outil fourni par l'application hôte
+/// Result of a tool call provided by the host application
 public struct AIToolResult: Sendable {
-    /// Identifiant de l'appel d'outil correspondant — doit correspondre à AIToolCall.id
+    /// Identifier of the corresponding tool call — must match AIToolCall.id
     public let toolCallId: String
-    /// Résultat de l'exécution sous forme de texte
+    /// Execution result as plain text
     public let content: String
 
     public init(toolCallId: String, content: String) {
@@ -36,18 +36,31 @@ public struct AIToolResult: Sendable {
     }
 }
 
-/// Réponse de l'agent pouvant contenir du texte et/ou des appels d'outils
+/// Agent response that may contain text and/or tool calls
 public struct AIMessageWithTools: Sendable {
-    /// Message texte de l'agent (content peut être vide si le modèle n'appelle que des outils)
+    /// Text message from the agent (content may be empty if the model only calls tools)
     public let message: AIMessage
-    /// Appels d'outils demandés par le modèle (vide si réponse textuelle pure)
+    /// Tool calls requested by the model (empty for pure text responses)
     public let toolCalls: [AIToolCall]
 
-    /// Indique si l'application doit exécuter des outils avant de continuer la conversation
+    /// Indicates whether the application must execute tools before continuing the conversation
     public var requiresToolExecution: Bool { !toolCalls.isEmpty }
 
     public init(message: AIMessage, toolCalls: [AIToolCall] = []) {
         self.message = message
         self.toolCalls = toolCalls
+    }
+
+    /// Returns an AIMessage suitable for insertion into conversation history.
+    /// The tool calls are stored on the message so OpenAI/Anthropic can correctly
+    /// associate subsequent tool results with the calls that triggered them.
+    public var asHistoryMessage: AIMessage {
+        AIMessage(
+            id: message.id,
+            role: .assistant,
+            content: message.content,
+            timestamp: message.timestamp,
+            toolCalls: toolCalls.isEmpty ? nil : toolCalls
+        )
     }
 }
