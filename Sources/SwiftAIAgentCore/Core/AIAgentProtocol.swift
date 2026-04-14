@@ -104,6 +104,13 @@ public extension AIAgent {
 
     // MARK: - Feature 4: Structured Outputs
 
+    /// Send a single user message and decode the JSON response into a `Codable` type.
+    ///
+    /// Convenience overload — equivalent to `send(messages: [.user(prompt)], as: T.self)`.
+    func send<T: Decodable & Sendable>(_ prompt: String, as type: T.Type) async throws -> T {
+        try await send(messages: [.user(prompt)], as: type)
+    }
+
     /// Send messages and decode the JSON response directly into a Codable type.
     ///
     /// Uses native JSON mode when available (OpenAI, Gemini), otherwise injects
