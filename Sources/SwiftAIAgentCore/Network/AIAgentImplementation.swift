@@ -54,9 +54,10 @@ public actor AIAgentImplementation: AIAgent {
         // Route to the appropriate client
         let response: AIMessage
         switch configuration.model.provider {
-        case .openai:
+        case .openai, .gemini:
+            // Gemini uses the OpenAI-compatible endpoint — same client handles both
             guard let client = openAIClient else {
-                throw AIError.invalidContext("OpenAI client not initialized")
+                throw AIError.invalidContext("OpenAI/Gemini client not initialized")
             }
             response = try await client.sendCompletion(messages: messages)
 
@@ -91,9 +92,9 @@ public actor AIAgentImplementation: AIAgent {
 
         // Route to the appropriate client with tool support
         switch configuration.model.provider {
-        case .openai:
+        case .openai, .gemini:
             guard let client = openAIClient else {
-                throw AIError.invalidContext("OpenAI client not initialized")
+                throw AIError.invalidContext("OpenAI/Gemini client not initialized")
             }
             return try await client.sendCompletionWithTools(messages: messages, tools: tools)
 
@@ -127,9 +128,9 @@ public actor AIAgentImplementation: AIAgent {
         )
 
         switch configuration.model.provider {
-        case .openai:
+        case .openai, .gemini:
             guard let client = openAIClient else {
-                throw AIError.invalidContext("OpenAI client not initialized")
+                throw AIError.invalidContext("OpenAI/Gemini client not initialized")
             }
             // Send without additional tools — the model produces the final response
             let response = try await client.sendCompletion(messages: fullMessages)
@@ -174,9 +175,9 @@ public actor AIAgentImplementation: AIAgent {
 
         // Route to the appropriate client
         switch configuration.model.provider {
-        case .openai:
+        case .openai, .gemini:
             guard let client = openAIClient else {
-                throw AIError.invalidContext("OpenAI client not initialized")
+                throw AIError.invalidContext("OpenAI/Gemini client not initialized")
             }
             return await client.streamCompletion(messages: messages)
 
@@ -202,12 +203,13 @@ public actor AIAgentImplementation: AIAgent {
 // MARK: - Private Helpers
 
 private extension AIAgentImplementation {
-    /// Creates network clients based on the configured provider
+    /// Creates network clients based on the configured provider.
+    /// Gemini uses the OpenAI-compatible endpoint, so it reuses OpenAIClient.
     static func buildClients(
         configuration: AIConfiguration
     ) -> (openAI: OpenAIClient?, anthropic: AnthropicClient?) {
         switch configuration.model.provider {
-        case .openai:
+        case .openai, .gemini:
             return (OpenAIClient(configuration: configuration), nil)
         case .anthropic:
             return (nil, AnthropicClient(configuration: configuration))
@@ -304,10 +306,37 @@ public extension AIAgentImplementation {
         try AIAgentImplementation(configuration: AIConfiguration(model: .gpt41Mini, apiKey: apiKey))
     }
 
+    /// Creates a GPT-4.1 Nano agent (1M context, fastest GPT-4.1 variant)
+    static func gpt41Nano(apiKey: String) throws -> AIAgentImplementation {
+        try AIAgentImplementation(configuration: AIConfiguration(model: .gpt41Nano, apiKey: apiKey))
+    }
+
+    /// Creates an o4-mini agent (200k context, reasoning model)
+    static func o4Mini(apiKey: String) throws -> AIAgentImplementation {
+        try AIAgentImplementation(configuration: AIConfiguration(model: .o4Mini, apiKey: apiKey))
+    }
+
     // MARK: Anthropic — Claude 3.7
 
     /// Creates a Claude 3.7 Sonnet agent (200k context, extended thinking)
     static func claude37Sonnet(apiKey: String) throws -> AIAgentImplementation {
         try AIAgentImplementation(configuration: AIConfiguration(model: .claude37Sonnet, apiKey: apiKey))
+    }
+
+    // MARK: Google Gemini
+
+    /// Creates a Gemini 2.5 Flash agent (1M context, fast and cost-efficient)
+    static func gemini25Flash(apiKey: String) throws -> AIAgentImplementation {
+        try AIAgentImplementation(configuration: AIConfiguration(model: .gemini25Flash, apiKey: apiKey))
+    }
+
+    /// Creates a Gemini 2.5 Pro agent (1M context, most capable Gemini)
+    static func gemini25Pro(apiKey: String) throws -> AIAgentImplementation {
+        try AIAgentImplementation(configuration: AIConfiguration(model: .gemini25Pro, apiKey: apiKey))
+    }
+
+    /// Creates a Gemini 2.0 Flash agent (1M context)
+    static func gemini20Flash(apiKey: String) throws -> AIAgentImplementation {
+        try AIAgentImplementation(configuration: AIConfiguration(model: .gemini20Flash, apiKey: apiKey))
     }
 }
