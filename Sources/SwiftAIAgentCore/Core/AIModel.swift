@@ -4,6 +4,8 @@ import Foundation
 public enum AIProvider: String, Codable, Sendable {
     case openai
     case anthropic
+    /// Google Gemini — routed via the OpenAI-compatible endpoint
+    case gemini
 
     public var baseURL: String {
         switch self {
@@ -11,6 +13,9 @@ public enum AIProvider: String, Codable, Sendable {
             return "https://api.openai.com/v1"
         case .anthropic:
             return "https://api.anthropic.com/v1"
+        case .gemini:
+            // OpenAI-compatible endpoint — accepts Bearer auth and chat/completions format
+            return "https://generativelanguage.googleapis.com/v1beta/openai"
         }
     }
 }
@@ -145,6 +150,20 @@ public struct AIModel: Codable, Sendable, Hashable {
         maxTokens: 1047576
     )
 
+    /// GPT-4.1 Nano — smallest and fastest GPT-4.1 variant, 1M context
+    public static let gpt41Nano = AIModel(
+        provider: .openai,
+        name: "gpt-4.1-nano",
+        maxTokens: 1047576
+    )
+
+    /// o4-mini — OpenAI reasoning model, optimised for cost and speed, 200k context
+    public static let o4Mini = AIModel(
+        provider: .openai,
+        name: "o4-mini",
+        maxTokens: 200000
+    )
+
     // MARK: - Anthropic Latest Models
 
     /// Claude 3.7 Sonnet — extended thinking, 200k context (February 2025)
@@ -152,5 +171,28 @@ public struct AIModel: Codable, Sendable, Hashable {
         provider: .anthropic,
         name: "claude-3-7-sonnet-20250219",
         maxTokens: 200000
+    )
+
+    // MARK: - Google Gemini Models
+
+    /// Gemini 2.5 Flash — fast and cost-efficient multimodal model, 1M context
+    public static let gemini25Flash = AIModel(
+        provider: .gemini,
+        name: "gemini-2.5-flash",
+        maxTokens: 1048576
+    )
+
+    /// Gemini 2.5 Pro — most capable Gemini model, 1M context
+    public static let gemini25Pro = AIModel(
+        provider: .gemini,
+        name: "gemini-2.5-pro",
+        maxTokens: 1048576
+    )
+
+    /// Gemini 2.0 Flash — previous generation fast model, 1M context
+    public static let gemini20Flash = AIModel(
+        provider: .gemini,
+        name: "gemini-2.0-flash",
+        maxTokens: 1048576
     )
 }
