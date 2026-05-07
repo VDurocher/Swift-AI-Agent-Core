@@ -8,11 +8,23 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [1.1.0] — 2026-05-07
+
 ### Added
-- GPT-4.1 and GPT-4.1 Mini models (1M context, OpenAI April 2025)
-- Claude 3.7 Sonnet model with extended thinking support (Anthropic February 2025)
+- **Google Gemini support** via the OpenAI-compatible endpoint (`/v1beta/openai`)
+  — `gemini25Flash`, `gemini25Pro`, `gemini20Flash` model constants
+  — 3 new convenience initializers: `gemini25Flash()`, `gemini25Pro()`, `gemini20Flash()`
+  — zero new dependencies: `GeminiClient` reuses `OpenAIClient` internally
+- **GPT-4.1 Nano** model constant — smallest and fastest GPT-4.1 variant, 1M context
+- **o4-mini** model constant — OpenAI reasoning model, 200k context
+- **GPT-4.1** and **GPT-4.1 Mini** models (1M context, OpenAI April 2025)
+- **Claude 3.7 Sonnet** model with extended thinking support (Anthropic February 2025)
 
 ### Changed
+- `AIProvider` enum gains a `.gemini` case with its own `baseURL`
+- `AIAgentImplementation.buildClients` routes `.gemini` to `OpenAIClient` (shared protocol)
 - Split `AnthropicClient.swift` into `AnthropicClient.swift` + `AnthropicClientModels.swift`
 
 ---
@@ -33,5 +45,6 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Zero external dependencies
 - CI on macOS 15 (Swift 6) via GitHub Actions
 
-[Unreleased]: https://github.com/VDurocher/Swift-AI-Agent-Core/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/VDurocher/Swift-AI-Agent-Core/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/VDurocher/Swift-AI-Agent-Core/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/VDurocher/Swift-AI-Agent-Core/releases/tag/v1.0.0
