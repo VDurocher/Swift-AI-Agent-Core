@@ -68,8 +68,8 @@
 @_exported import struct Foundation.TimeInterval
 @_exported import struct Foundation.UUID
 
-// Exports explicites des types de tool calling pour les consommateurs du package
-// AITool, AIToolParameters, AIToolProperty — définition des outils disponibles
-// AIToolCall — appel d'outil retourné par le modèle
-// AIToolResult — résultat d'exécution fourni par l'application
-// AIMessageWithTools — réponse unifiée texte + appels d'outils
+// Explicit re-exports for tool calling types consumed by package clients:
+// AITool, AIToolParameters, AIToolProperty — tool definitions exposed to the model
+// AIToolCall — a tool invocation returned by the model
+// AIToolResult — the execution result fed back into the conversation
+// AIMessageWithTools — unified response carrying text content and tool calls
